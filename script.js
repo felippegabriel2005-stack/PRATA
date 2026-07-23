@@ -2,6 +2,53 @@
    PRATA - Script de Controle de Arquitetura de Telas (Pai & Filho)
    ========================================================================== */
 
+// ==========================================================================
+// SUPABASE - Cliente e camada de acesso a dados
+// ==========================================================================
+const SUPABASE_URL = 'https://ldcpwadnvuotacwnkcop.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_3eLKeEjjegJgKLf1bUHQ6Q_GQPJ_5v6';
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Lista de clientes carregada do Supabase (tabela `clients`)
+let allClients = [];
+
+function slugify(str) {
+  return str
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+function clientSlugFromName(name) {
+  const c = allClients.find(c => c.name === name);
+  return c ? c.slug : null;
+}
+
+function clientNameFromSlug(slug) {
+  const c = allClients.find(c => c.slug === slug);
+  return c ? c.name : null;
+}
+
+async function fetchClients() {
+  const { data, error } = await supabaseClient.from('clients').select('*').order('position');
+  if (error) { console.error('Erro ao carregar clientes', error); return []; }
+  return data;
+}
+
+async function insertClient(name, status) {
+  const slug = slugify(name);
+  const position = allClients.length;
+  const { data, error } = await supabaseClient
+    .from('clients')
+    .insert({ slug, name, status, pinned: false, position })
+    .select()
+    .single();
+  if (error) { console.error('Erro ao criar cliente', error); return null; }
+  return data;
+}
+
 // Base de Dados do Dashboard Pai (Agência) por Períodos
 const agencyPeriodData = {
   "All Time": {
@@ -473,40 +520,54 @@ const defaultAnalyses = [
   { id: "personalizado", name: "Personalizado" }
 ];
 
-function initClientAnalyses() {
-  const saved = localStorage.getItem('prata_client_analyses');
-  if (saved) {
-    try {
-      clientAnalyses = JSON.parse(saved);
-      return;
-    } catch(e) {
-      console.error("Error parsing saved analyses", e);
-    }
+async function initClientAnalyses() {
+  const { data, error } = await supabaseClient
+    .from('client_analyses')
+    .select('*')
+    .order('position');
+
+  if (error) {
+    console.error('Erro ao carregar análises de cliente', error);
+    clientAnalyses = {
+      drex: JSON.parse(JSON.stringify(defaultAnalyses)),
+      orion: JSON.parse(JSON.stringify(defaultAnalyses)),
+      lumera: JSON.parse(JSON.stringify(defaultAnalyses)),
+      volks: JSON.parse(JSON.stringify(defaultAnalyses))
+    };
+    return;
   }
-  
-  // Default values
-  clientAnalyses = {
-    drex: JSON.parse(JSON.stringify(defaultAnalyses)),
-    orion: JSON.parse(JSON.stringify(defaultAnalyses)),
-    lumera: JSON.parse(JSON.stringify(defaultAnalyses)),
-    volks: JSON.parse(JSON.stringify(defaultAnalyses))
-  };
+
+  clientAnalyses = {};
+  data.forEach(row => {
+    if (!clientAnalyses[row.client_slug]) clientAnalyses[row.client_slug] = [];
+    clientAnalyses[row.client_slug].push({ id: row.analysis_id, name: row.name });
+  });
 }
 
-function saveClientAnalyses() {
-  localStorage.setItem('prata_client_analyses', JSON.stringify(clientAnalyses));
+async function saveClientAnalyses() {
+  const slugs = Object.keys(clientAnalyses);
+  if (!slugs.length) return;
+
+  await supabaseClient.from('client_analyses').delete().in('client_slug', slugs);
+
+  const rows = [];
+  slugs.forEach(slug => {
+    (clientAnalyses[slug] || []).forEach((a, i) => {
+      rows.push({ client_slug: slug, analysis_id: a.id, name: a.name, position: i });
+    });
+  });
+
+  if (rows.length) await supabaseClient.from('client_analyses').insert(rows);
 }
 
 function renderClientSidebar(clientKey) {
   const menu = document.getElementById(`analysis-menu-${clientKey}`);
   if (!menu) return;
-  
+
   menu.innerHTML = '';
-  
-  const clientName = clientKey === 'drex' ? 'Drex Imóveis' :
-                     clientKey === 'orion' ? 'Orion Tech' :
-                     clientKey === 'lumera' ? 'Lumera Saúde' : 'Volks B2B';
-                     
+
+  const clientName = clientNameFromSlug(clientKey);
+
   const analysesList = clientAnalyses[clientKey] || [];
   
   analysesList.forEach(ana => {
@@ -646,11 +707,9 @@ function renameAnalysisInline(clientKey, analysisId) {
         const oldName = ana.name;
         ana.name = newName;
         saveClientAnalyses();
-        
-        const clientName = clientKey === 'drex' ? 'Drex Imóveis' :
-                           clientKey === 'orion' ? 'Orion Tech' :
-                           clientKey === 'lumera' ? 'Lumera Saúde' : 'Volks B2B';
-                           
+
+        const clientName = clientNameFromSlug(clientKey);
+
         if (currentClient === clientName && currentAnalysis === oldName) {
           currentAnalysis = newName;
           updateActiveAnalysisView(clientName, newName);
@@ -680,11 +739,9 @@ function deleteAnalysis(clientKey, analysisId) {
   if (index !== -1) {
     const deleted = list.splice(index, 1)[0];
     saveClientAnalyses();
-    
-    const clientName = clientKey === 'drex' ? 'Drex Imóveis' :
-                       clientKey === 'orion' ? 'Orion Tech' :
-                       clientKey === 'lumera' ? 'Lumera Saúde' : 'Volks B2B';
-                       
+
+    const clientName = clientNameFromSlug(clientKey);
+
     if (currentClient === clientName && currentAnalysis === deleted.name) {
       selectAnalysis(clientName, 'Visão geral', 'visao');
     } else {
@@ -705,10 +762,8 @@ function addNewAnalysisPrompt(clientKey) {
     clientAnalyses[clientKey].push({ id, name: cleanName });
     saveClientAnalyses();
     renderClientSidebar(clientKey);
-    
-    const clientName = clientKey === 'drex' ? 'Drex Imóveis' :
-                       clientKey === 'orion' ? 'Orion Tech' :
-                       clientKey === 'lumera' ? 'Lumera Saúde' : 'Volks B2B';
+
+    const clientName = clientNameFromSlug(clientKey);
     selectAnalysis(clientName, cleanName, id);
   }
 }
@@ -838,10 +893,8 @@ function getAnalysisMetrics(clientName, analysisName) {
 }
 
 function updateActiveAnalysisView(clientName, analysisName) {
-  const clientKey = clientName === 'Drex Imóveis' ? 'drex' :
-                     clientName === 'Orion Tech' ? 'orion' :
-                     clientName === 'Lumera Saúde' ? 'lumera' : 'volks';
-  
+  const clientKey = clientSlugFromName(clientName);
+
   // Highlight the sidebar menu
   renderClientSidebar(clientKey);
   
@@ -974,10 +1027,8 @@ function loadConversaoCampaignsForClient(clientName) {
 let conversaoCampaigns = [];
 
 function toggleClientExpand(clientName) {
-  const clientKey = clientName === 'Drex Imóveis' ? 'drex' :
-                     clientName === 'Orion Tech' ? 'orion' :
-                     clientName === 'Lumera Saúde' ? 'lumera' : 'volks';
-                     
+  const clientKey = clientSlugFromName(clientName);
+
   const container = document.getElementById(`container-client-${clientKey}`);
   const menu = document.getElementById(`analysis-menu-${clientKey}`);
   
@@ -1020,10 +1071,8 @@ function toggleClientExpand(clientName) {
 function selectAnalysis(clientName, analysisName, analysisId) {
   currentClient = clientName;
   currentAnalysis = analysisName;
-  const clientKey = clientName === 'Drex Imóveis' ? 'drex' :
-                     clientName === 'Orion Tech' ? 'orion' :
-                     clientName === 'Lumera Saúde' ? 'lumera' : 'volks';
-                     
+  const clientKey = clientSlugFromName(clientName);
+
   if (!analysisId) {
     const list = clientAnalyses[clientKey] || [];
     const item = list.find(a => a.name === analysisName);
@@ -2666,7 +2715,10 @@ function selectClient(clientName) {
   currentClient = clientName;
   // Obtém os dados detalhados do cliente
   const data = clientDetailedData[clientName];
-  if (!data) return;
+  if (!data) {
+    showToast(`${clientName} ainda não tem dados de campanhas cadastrados.`);
+    return;
+  }
 
   // Ajusta visibilidade dos blocos
   document.getElementById('view-dashboard-pai').style.display = 'none';
@@ -2686,11 +2738,8 @@ function selectClient(clientName) {
   if (menuReports) menuReports.classList.remove('active');
   
   // Sincroniza sub-menus da sidebar
-  const clientKey = clientName === 'Drex Imóveis' ? 'drex' :
-                     clientName === 'Orion Tech' ? 'orion' :
-                     clientName === 'Lumera Saúde' ? 'lumera' :
-                     clientName === 'Volks B2B' ? 'volks' : null;
-                       
+  const clientKey = clientSlugFromName(clientName);
+
   const allMenus = document.querySelectorAll('.analysis-menu');
   allMenus.forEach(m => m.style.display = 'none');
   
@@ -3296,15 +3345,22 @@ window.onresize = function() {
 // 4. Gerenciamento de Colaboradores
 // --------------------------------------------------
 
-let collaboratorsList = [
-  { id: 1, name: "Caio Breno Carvalho de Freitas", role: "SDR", email: "caio.freitas@superaholdings.com.br", status: "Ativo", statusClass: "active" },
-  { id: 2, name: "cerqueira.felipe", role: "Hunter", email: "cerqueira.felipe@outlook.com", status: "Ativo", statusClass: "active" },
-  { id: 3, name: "felippe.alves", role: "Hunter", email: "felippe.alves@superaholdings.com.br", status: "Ativo", statusClass: "active" },
-  { id: 4, name: "Marcelo Lira", role: "Gestor(a) de Hunters", email: "marcelo.lira@superaholdings.com.br", status: "Ativo", statusClass: "active" },
-  { id: 5, name: "Mayara Cristina Da Silva", role: "SDR", email: "mayara.silva@superaholdings.com.br", status: "Ativo", statusClass: "active" }
-];
+let collaboratorsList = [];
 
-function showColaboradores() {
+async function fetchCollaboratorsFromDB() {
+  const { data, error } = await supabaseClient.from('collaborators').select('*').order('name');
+  if (error) { console.error('Erro ao carregar colaboradores', error); return []; }
+  return data.map(c => ({
+    id: c.id,
+    name: c.name,
+    role: c.role,
+    email: c.email,
+    status: c.status,
+    statusClass: c.status === 'Ativo' ? 'active' : 'suspended'
+  }));
+}
+
+async function showColaboradores() {
   currentClient = "";
   // Ajusta visibilidade dos blocos
   document.getElementById('view-dashboard-pai').style.display = 'none';
@@ -3331,6 +3387,7 @@ function showColaboradores() {
   document.getElementById('search-colaborador').value = '';
   
   // Renderiza a lista de colaboradores
+  collaboratorsList = await fetchCollaboratorsFromDB();
   renderColaboradores(collaboratorsList);
 }
 
@@ -3365,8 +3422,8 @@ function renderColaboradores(list) {
           <span>${colab.status}</span>
         </div>
         <div class="colab-card-actions">
-          <button class="colab-btn-edit" onclick="openColaboradorModal(${colab.id})">Editar</button>
-          <button class="${suspendBtnClass}" onclick="toggleSuspend(${colab.id})">${suspendBtnText}</button>
+          <button class="colab-btn-edit" onclick="openColaboradorModal('${colab.id}')">Editar</button>
+          <button class="${suspendBtnClass}" onclick="toggleSuspend('${colab.id}')">${suspendBtnText}</button>
         </div>
       </div>
     `;
@@ -3400,9 +3457,9 @@ function closeColaboradorModal() {
   document.getElementById('colaborador-modal').style.display = 'none';
 }
 
-function saveColaborador(event) {
+async function saveColaborador(event) {
   event.preventDefault();
-  
+
   const idVal = document.getElementById('colab-id').value;
   const name = document.getElementById('colab-name').value;
   const role = document.getElementById('colab-role').value;
@@ -3410,31 +3467,39 @@ function saveColaborador(event) {
 
   if (idVal) {
     // Atualiza existente
-    const id = parseInt(idVal);
-    const colab = collaboratorsList.find(c => c.id === id);
+    const colab = collaboratorsList.find(c => c.id === idVal);
     if (colab) {
       colab.name = name;
       colab.role = role;
       colab.email = email;
     }
+    await supabaseClient.from('collaborators').update({ name, role, email }).eq('id', idVal);
   } else {
     // Cria novo
-    const newId = collaboratorsList.length > 0 ? Math.max(...collaboratorsList.map(c => c.id)) + 1 : 1;
-    collaboratorsList.push({
-      id: newId,
-      name: name,
-      role: role,
-      email: email,
-      status: "Ativo",
-      statusClass: "active"
-    });
+    const { data, error } = await supabaseClient
+      .from('collaborators')
+      .insert({ name, role, email, status: 'Ativo' })
+      .select()
+      .single();
+    if (error) {
+      console.error('Erro ao criar colaborador', error);
+    } else {
+      collaboratorsList.push({
+        id: data.id,
+        name: data.name,
+        role: data.role,
+        email: data.email,
+        status: data.status,
+        statusClass: "active"
+      });
+    }
   }
 
   closeColaboradorModal();
   renderColaboradores(collaboratorsList);
 }
 
-function toggleSuspend(id) {
+async function toggleSuspend(id) {
   const colab = collaboratorsList.find(c => c.id === id);
   if (colab) {
     if (colab.statusClass === 'active') {
@@ -3445,6 +3510,7 @@ function toggleSuspend(id) {
       colab.statusClass = "active";
     }
     renderColaboradores(collaboratorsList);
+    await supabaseClient.from('collaborators').update({ status: colab.status }).eq('id', id);
   }
 }
 
@@ -3928,21 +3994,14 @@ function simulateAIResponse(query) {
 // ==========================================================================
 // DROPDOWN DE CLIENTES
 // ==========================================================================
-const dropdownClientsList = [
-  { name: "Drex Imóveis", status: "Saudável", statusClass: "healthy" },
-  { name: "Orion Tech", status: "Saudável", statusClass: "healthy" },
-  { name: "Lumera Saúde", status: "Atenção", statusClass: "attention" },
-  { name: "Volks B2B", status: "Crítico", statusClass: "critical" },
-  { name: "Nexa Edu", status: "Saudável", statusClass: "healthy" },
-  { name: "AgroVale", status: "Atenção", statusClass: "attention" },
-  { name: "RetailMax", status: "Atenção", statusClass: "attention" },
-  { name: "Real Estate Pro", status: "Saudável", statusClass: "healthy" }
-];
+function statusLabel(status) {
+  return status === 'healthy' ? 'Saudável' : status === 'attention' ? 'Atenção' : 'Crítico';
+}
 
-function renderClientesDropdownList(list = dropdownClientsList) {
+function renderClientesDropdownList(list = allClients) {
   const container = document.getElementById('clientes-dropdown-list');
   container.innerHTML = '';
-  
+
   list.forEach(c => {
     const item = document.createElement('div');
     item.className = 'dropdown-client-item';
@@ -3952,32 +4011,84 @@ function renderClientesDropdownList(list = dropdownClientsList) {
     };
     item.innerHTML = `
       <div class="dropdown-client-left">
-        <span class="status-dot ${c.statusClass}"></span>
+        <span class="status-dot ${c.status}"></span>
         <span>${c.name}</span>
       </div>
-      <span class="dropdown-status-badge ${c.statusClass}">${c.status}</span>
+      <span class="dropdown-status-badge ${c.status}">${statusLabel(c.status)}</span>
     `;
     container.appendChild(item);
   });
-  
-  document.getElementById('clientes-counter').innerText = `${list.length} de 18 clientes`;
+
+  document.getElementById('clientes-counter').innerText = `${list.length} de ${allClients.length} clientes`;
 }
 
 function filterClientes(query) {
   const q = query.toLowerCase().trim();
   if (q === '') {
-    renderClientesDropdownList(dropdownClientsList);
+    renderClientesDropdownList(allClients);
     return;
   }
-  const filtered = dropdownClientsList.filter(c => c.name.toLowerCase().includes(q));
+  const filtered = allClients.filter(c => c.name.toLowerCase().includes(q));
   renderClientesDropdownList(filtered);
+}
+
+function renderSidebarClients() {
+  const list = document.getElementById('sidebar-client-list');
+  if (!list) return;
+
+  list.innerHTML = '';
+
+  allClients.filter(c => c.pinned).forEach(c => {
+    const li = document.createElement('li');
+    li.className = 'client-container';
+    li.id = `container-client-${c.slug}`;
+    li.innerHTML = `
+      <div class="client-item" id="sidebar-client-${c.slug}" onclick="toggleClientExpand('${c.name}')">
+        <div class="client-name-wrapper">
+          <span class="status-dot ${c.status}"></span>
+          <span>${c.name}</span>
+        </div>
+        <span class="client-chevron" id="chevron-${c.slug}">▼</span>
+      </div>
+      <ul class="analysis-menu" id="analysis-menu-${c.slug}" style="display: none;"></ul>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function openClienteModal() {
+  document.getElementById('cliente-modal').style.display = 'flex';
+}
+
+function closeClienteModal() {
+  document.getElementById('cliente-modal').style.display = 'none';
+  document.getElementById('cliente-form').reset();
+}
+
+async function saveNovoCliente(event) {
+  event.preventDefault();
+
+  const name = document.getElementById('cliente-name').value.trim();
+  const status = document.getElementById('cliente-status').value;
+  if (!name) return;
+
+  const created = await insertClient(name, status);
+  if (!created) {
+    showToast('Não foi possível criar o cliente.');
+    return;
+  }
+
+  allClients.push(created);
+  closeClienteModal();
+  renderClientesDropdownList(allClients);
+  showToast(`Cliente "${name}" criado com sucesso!`);
 }
 
 function toggleClientesDropdown(event, forceState) {
   if (event) {
     event.stopPropagation();
   }
-  
+
   const dropdown = document.getElementById('clientes-dropdown');
   const trigger = document.getElementById('client-more-link');
   
@@ -4405,20 +4516,91 @@ const DEFAULT_RADAR_COMPANIES = [
 
 const STAGE_PRESET_COLORS = ['#3b82f6', '#10b981', '#8b5cf6', '#f97316', '#f59e0b', '#ef4444', '#ec4899', '#64748b'];
 
-function saveCommercialState() {
-  localStorage.setItem('prata_commercial_stages', JSON.stringify(commercialStages));
-  localStorage.setItem('prata_commercial_leads', JSON.stringify(commercialLeads));
-  localStorage.setItem('prata_radar_companies', JSON.stringify(radarCompanies));
+async function saveCommercialState() {
+  const stageRows = commercialStages.map((s, i) => ({ id: s.id, name: s.name, color: s.color, position: i }));
+  const leadRows = commercialLeads.map(l => ({
+    id: l.id,
+    name: l.name,
+    stage_id: l.stageId,
+    tag: l.tag,
+    phone: l.phone,
+    email: l.email,
+    role: l.role,
+    bu: l.bu,
+    potential_value: l.potentialValue || 0,
+    negotiation: l.negotiation,
+    loss_reason: l.lossReason,
+    first_contact_date: l.firstContactDate,
+    owner: l.owner,
+    source: l.source,
+    next_action: l.nextAction
+  }));
+  const radarRows = radarCompanies.map(r => ({
+    id: r.id,
+    name: r.name,
+    segment: r.segment,
+    employees: r.employees,
+    revenue: r.revenue,
+    decision_maker: r.decisionMaker,
+    mapped: r.mapped
+  }));
+
+  // Sincroniza por completo (mesmo padrão do localStorage: sobrescreve tudo a cada mudança)
+  await supabaseClient.from('commercial_leads').delete().not('id', 'is', null);
+  await supabaseClient.from('commercial_stages').delete().not('id', 'is', null);
+  await supabaseClient.from('radar_companies').delete().not('id', 'is', null);
+
+  if (stageRows.length) await supabaseClient.from('commercial_stages').insert(stageRows);
+  if (leadRows.length) await supabaseClient.from('commercial_leads').insert(leadRows);
+  if (radarRows.length) await supabaseClient.from('radar_companies').insert(radarRows);
 }
 
-function loadCommercialState() {
-  const stg = localStorage.getItem('prata_commercial_stages');
-  const ld = localStorage.getItem('prata_commercial_leads');
-  const rd = localStorage.getItem('prata_radar_companies');
+async function loadCommercialState() {
+  const [stagesRes, leadsRes, radarRes] = await Promise.all([
+    supabaseClient.from('commercial_stages').select('*').order('position'),
+    supabaseClient.from('commercial_leads').select('*').order('created_at'),
+    supabaseClient.from('radar_companies').select('*').order('created_at')
+  ]);
 
-  commercialStages = stg ? JSON.parse(stg) : [...DEFAULT_STAGES];
-  commercialLeads = ld ? JSON.parse(ld) : [...DEFAULT_LEADS];
-  radarCompanies = rd ? JSON.parse(rd) : [...DEFAULT_RADAR_COMPANIES];
+  if (stagesRes.error || leadsRes.error || radarRes.error) {
+    console.error('Erro ao carregar dados comerciais', stagesRes.error, leadsRes.error, radarRes.error);
+  }
+
+  commercialStages = stagesRes.data && stagesRes.data.length
+    ? stagesRes.data.map(s => ({ id: s.id, name: s.name, color: s.color }))
+    : [...DEFAULT_STAGES];
+
+  commercialLeads = leadsRes.data
+    ? leadsRes.data.map(l => ({
+        id: l.id,
+        name: l.name,
+        stageId: l.stage_id,
+        tag: l.tag,
+        phone: l.phone,
+        email: l.email,
+        role: l.role,
+        bu: l.bu,
+        potentialValue: Number(l.potential_value) || 0,
+        negotiation: l.negotiation,
+        lossReason: l.loss_reason,
+        firstContactDate: l.first_contact_date,
+        owner: l.owner,
+        source: l.source,
+        nextAction: l.next_action
+      }))
+    : [...DEFAULT_LEADS];
+
+  radarCompanies = radarRes.data
+    ? radarRes.data.map(r => ({
+        id: r.id,
+        name: r.name,
+        segment: r.segment,
+        employees: r.employees,
+        revenue: r.revenue,
+        decisionMaker: r.decision_maker,
+        mapped: r.mapped
+      }))
+    : [...DEFAULT_RADAR_COMPANIES];
 }
 
 // Collapsible Menu Expansion
@@ -5106,7 +5288,7 @@ function importSelectedRadarLeads() {
     if (alreadyExists) return;
     
     const newLead = {
-      id: Date.now() + Math.floor(Math.random() * 1000),
+      id: crypto.randomUUID(),
       name: res.name,
       stageId: 'abordagem',
       tag: res.niche,
@@ -5256,7 +5438,7 @@ function deleteLeadQuick(leadId) {
 }
 
 function openAddLeadDrawer(stageId) {
-  const newId = Date.now();
+  const newId = crypto.randomUUID();
   const newLead = {
     id: newId,
     name: "Nova Oportunidade",
@@ -5479,16 +5661,18 @@ function collapseComercialMenu() {
 }
 
 // Inicializa a Tela na carga inicial e sincroniza o tema
-window.onload = function() {
+window.onload = async function() {
   syncThemeOnLoad();
-  loadCommercialState();
-  
-  // Initialize dynamic analyses
-  initClientAnalyses();
-  renderClientSidebar('drex');
-  renderClientSidebar('orion');
-  renderClientSidebar('lumera');
-  renderClientSidebar('volks');
-  
+
+  allClients = await fetchClients();
+  renderSidebarClients();
+
+  await Promise.all([
+    loadCommercialState(),
+    initClientAnalyses()
+  ]);
+
+  allClients.filter(c => c.pinned).forEach(c => renderClientSidebar(c.slug));
+
   showDashboardPai();
 };

@@ -33,54 +33,8 @@
       <!-- Menu de Clientes -->
       <div class="menu-section">
         <h3 class="menu-title">Clientes</h3>
-        <ul class="client-list">
-          <!-- Drex Imóveis -->
-          <li class="client-container" id="container-client-drex">
-            <div class="client-item" id="sidebar-client-drex" onclick="toggleClientExpand('Drex Imóveis')">
-              <div class="client-name-wrapper">
-                <span class="status-dot healthy"></span>
-                <span>Drex Imóveis</span>
-              </div>
-              <span class="client-chevron" id="chevron-drex">▼</span>
-            </div>
-            <ul class="analysis-menu" id="analysis-menu-drex" style="display: none;"></ul>
-          </li>
-          
-          <!-- Orion Tech -->
-          <li class="client-container" id="container-client-orion">
-            <div class="client-item" id="sidebar-client-orion" onclick="toggleClientExpand('Orion Tech')">
-              <div class="client-name-wrapper">
-                <span class="status-dot healthy"></span>
-                <span>Orion Tech</span>
-              </div>
-              <span class="client-chevron" id="chevron-orion">▼</span>
-            </div>
-            <ul class="analysis-menu" id="analysis-menu-orion" style="display: none;"></ul>
-          </li>
-
-          <!-- Lumera Saúde -->
-          <li class="client-container" id="container-client-lumera">
-            <div class="client-item" id="sidebar-client-lumera" onclick="toggleClientExpand('Lumera Saúde')">
-              <div class="client-name-wrapper">
-                <span class="status-dot healthy"></span>
-                <span>Lumera Saúde</span>
-              </div>
-              <span class="client-chevron" id="chevron-lumera">▼</span>
-            </div>
-            <ul class="analysis-menu" id="analysis-menu-lumera" style="display: none;"></ul>
-          </li>
-
-          <!-- Volks B2B -->
-          <li class="client-container" id="container-client-volks">
-            <div class="client-item" id="sidebar-client-volks" onclick="toggleClientExpand('Volks B2B')">
-              <div class="client-name-wrapper">
-                <span class="status-dot critical"></span>
-                <span>Volks B2B</span>
-              </div>
-              <span class="client-chevron" id="chevron-volks">▼</span>
-            </div>
-            <ul class="analysis-menu" id="analysis-menu-volks" style="display: none;"></ul>
-          </li>
+        <ul class="client-list" id="sidebar-client-list">
+          <!-- Preenchido dinamicamente por renderSidebarClients() -->
         </ul>
         <div class="client-more-link" id="client-more-link" onclick="toggleClientesDropdown(event)">Ver todos os clientes</div>
       </div>
@@ -1885,7 +1839,36 @@
     </div>
     <div class="dropdown-footer">
       <span class="dropdown-counter" id="clientes-counter">8 de 18 clientes</span>
+      <button class="filter-btn" style="height: 28px; font-size: 11px; padding: 0 10px;" onclick="openClienteModal()">+ Novo cliente</button>
       <button class="dropdown-close-btn" onclick="toggleClientesDropdown(event, false)">Fechar</button>
+    </div>
+  </div>
+
+  <!-- MODAL NOVO CLIENTE -->
+  <div id="cliente-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Novo Cliente</h3>
+        <button class="modal-close-btn" onclick="closeClienteModal()">&times;</button>
+      </div>
+      <form id="cliente-form" onsubmit="saveNovoCliente(event)">
+        <div class="form-group">
+          <label class="form-label" for="cliente-name">Nome do Cliente</label>
+          <input type="text" id="cliente-name" class="form-input" required placeholder="Ex: Nova Empresa Ltda">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="cliente-status">Status</label>
+          <select id="cliente-status" class="form-select" required>
+            <option value="healthy">Saudável</option>
+            <option value="attention">Atenção</option>
+            <option value="critical">Crítico</option>
+          </select>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="form-btn-secondary" onclick="closeClienteModal()">Cancelar</button>
+          <button type="submit" class="form-btn-primary">Salvar</button>
+        </div>
+      </form>
     </div>
   </div>
 
@@ -2048,6 +2031,7 @@
     </div>
   </div>
 
-  <script src="script.js?v=52"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="script.js?v=53"></script>
 </body>
 </html>
