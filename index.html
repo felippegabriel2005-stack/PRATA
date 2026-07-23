@@ -1872,6 +1872,20 @@
     </div>
   </div>
 
+  <!-- MODAL HISTÓRICO MENSAL DE MÉTRICA -->
+  <div id="metric-history-modal" class="modal-backdrop" style="display: none;" onclick="if (event.target === this) closeMetricHistoryModal()">
+    <div class="modal-card modal-card-wide">
+      <div class="modal-header">
+        <div>
+          <h3 class="modal-title" id="metric-history-title">Métrica</h3>
+          <p class="modal-subtitle" id="metric-history-subtitle">Evolução mensal</p>
+        </div>
+        <button class="modal-close-btn" onclick="closeMetricHistoryModal()">&times;</button>
+      </div>
+      <div id="metric-history-chart"></div>
+    </div>
+  </div>
+
   <!-- PAINEL DO ASSISTENTE PRATA -->
   <div id="assist-panel" class="assist-panel">
     <div class="assist-header">

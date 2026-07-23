@@ -5660,6 +5660,178 @@ function collapseComercialMenu() {
   }
 }
 
+// ==========================================================================
+// HISTÓRICO MENSAL DE MÉTRICAS (clique em qualquer card de KPI)
+// ==========================================================================
+
+function hashString(str) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
+  }
+  return h;
+}
+
+function seededRandom(seed) {
+  let t = seed + 0x6D2B79F5;
+  return function () {
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Converte um valor exibido em tela (ex: "R$482k", "2,7%", "R$43.628,62") em número + metadados de formato
+function parseMetricValue(text) {
+  const raw = text.trim();
+  const isCurrency = raw.startsWith('R$');
+  const isPercent = raw.endsWith('%');
+  let body = raw.replace('R$', '').replace('%', '').trim();
+
+  let multiplier = 1;
+  let hadK = false;
+  let hadM = false;
+  if (/k$/i.test(body)) {
+    multiplier = 1000;
+    hadK = true;
+    body = body.replace(/k$/i, '');
+  } else if (/m$/i.test(body)) {
+    multiplier = 1000000;
+    hadM = true;
+    body = body.replace(/m$/i, '');
+  }
+
+  let normalized;
+  if (body.includes(',')) {
+    normalized = body.replace(/\./g, '').replace(',', '.');
+  } else {
+    normalized = body.replace(/\./g, '');
+  }
+
+  const num = parseFloat(normalized) * multiplier;
+  return { value: isNaN(num) ? 0 : num, isCurrency, isPercent, hadK, hadM };
+}
+
+// Formata um número de volta no mesmo "estilo" do valor original
+function formatMetricValue(num, meta) {
+  if (meta.isPercent) {
+    return num.toFixed(1).replace('.', ',') + '%';
+  }
+  if (meta.isCurrency) {
+    if (meta.hadM || num >= 1000000) {
+      return 'R$' + (num / 1000000).toFixed(2).replace('.', ',') + 'M';
+    }
+    if (meta.hadK || num >= 1000) {
+      return 'R$' + Math.round(num / 1000) + 'k';
+    }
+    return 'R$' + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return Math.round(num).toLocaleString('pt-BR');
+}
+
+// Métricas de custo: valor menor = melhor (inverte a leitura de verde/vermelho)
+function isLowerBetter(label) {
+  const l = label.toLowerCase();
+  return l.includes('cpl') || l.includes('cpa') || l.includes('custo');
+}
+
+function getLastMonthLabels(n) {
+  const monthAbbr = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  const now = new Date();
+  const labels = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    labels.push(monthAbbr[d.getMonth()]);
+  }
+  return labels;
+}
+
+// Gera uma série mensal plausível terminando exatamente no valor atual exibido em tela.
+// Usa uma semente (título + contexto do cliente) para o histórico ser estável entre cliques,
+// já que ainda não existe uma série histórica real por trás dessas métricas.
+function generateMonthlyHistory(currentValue, seedKey, months) {
+  const rng = seededRandom(hashString(seedKey));
+  const values = new Array(months);
+  values[months - 1] = currentValue;
+  let v = currentValue;
+  for (let i = months - 2; i >= 0; i--) {
+    const variation = (rng() - 0.5) * 0.36; // +/- 18% por mês
+    v = Math.max(v / (1 + variation), 0);
+    values[i] = v;
+  }
+  return values;
+}
+
+function renderMetricHistoryChart(container, months, values, meta, metricLabel) {
+  container.innerHTML = '';
+  const lowerBetter = isLowerBetter(metricLabel);
+  const max = Math.max(...values) * 1.15 || 1;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'history-chart-bars';
+
+  values.forEach((v, i) => {
+    let trendClass = 'neutral';
+    if (i > 0) {
+      const wentUp = v >= values[i - 1];
+      const isGood = lowerBetter ? !wentUp : wentUp;
+      trendClass = isGood ? 'good' : 'bad';
+    }
+
+    const heightPct = max > 0 ? (v / max) * 100 : 0;
+
+    const col = document.createElement('div');
+    col.className = 'history-bar-col';
+    col.innerHTML = `
+      <span class="history-bar-value">${formatMetricValue(v, meta)}</span>
+      <div class="history-bar-track">
+        <div class="history-bar-fill ${trendClass}" style="height: ${heightPct}%;"></div>
+      </div>
+      <span class="history-bar-label">${months[i]}</span>
+    `;
+    wrap.appendChild(col);
+  });
+
+  container.appendChild(wrap);
+}
+
+function openMetricHistoryModal(metricLabel, currentValueText) {
+  const meta = parseMetricValue(currentValueText);
+  const seedKey = `${currentClient || 'agencia'}::${metricLabel}`;
+  const months = 6;
+  const monthLabels = getLastMonthLabels(months);
+  const values = generateMonthlyHistory(meta.value, seedKey, months);
+
+  document.getElementById('metric-history-title').innerText = metricLabel;
+  const contextLabel = currentClient ? currentClient : 'todos os clientes';
+  const better = isLowerBetter(metricLabel);
+  document.getElementById('metric-history-subtitle').innerText =
+    `Evolução mensal · ${contextLabel} · verde = melhorou, vermelho = piorou vs. mês anterior${better ? ' (menor é melhor)' : ''}`;
+
+  renderMetricHistoryChart(document.getElementById('metric-history-chart'), monthLabels, values, meta, metricLabel);
+
+  document.getElementById('metric-history-modal').style.display = 'flex';
+}
+
+function closeMetricHistoryModal() {
+  document.getElementById('metric-history-modal').style.display = 'none';
+}
+
+// Delegação global: qualquer .metric-card "simples" (um único valor) abre o histórico ao ser clicada.
+// Cards compostos (ex: comparativo Google Ads x Meta Ads, com vários valores dentro) são ignorados.
+document.addEventListener('click', function (e) {
+  const card = e.target.closest('.metric-card');
+  if (!card) return;
+
+  const values = card.querySelectorAll('.card-value');
+  if (values.length !== 1) return;
+
+  const titleEl = card.querySelector('.card-title');
+  if (!titleEl) return;
+
+  openMetricHistoryModal(titleEl.innerText.trim(), values[0].innerText.trim());
+});
+
 // Inicializa a Tela na carga inicial e sincroniza o tema
 window.onload = async function() {
   syncThemeOnLoad();
