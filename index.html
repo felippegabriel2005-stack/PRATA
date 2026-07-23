@@ -1,0 +1,2053 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRATA - Revenue Tracking & Intelligence</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    
+    <!-- SIDEBAR LATERAL FIXA -->
+    <aside class="sidebar">
+      <!-- Logo Container -->
+      <div class="logo-container" onclick="showDashboardPai()">
+        <img src="logo.png" alt="PRATA Logo" class="logo-img">
+        <span class="logo-text">PRATA</span>
+      </div>
+      
+      <!-- Menu de Visão Geral -->
+      <div class="menu-section">
+        <h3 class="menu-title">Visão Geral</h3>
+        <ul class="menu-list">
+          <li>
+            <a class="menu-link active" id="menu-dashboard-link" onclick="showDashboardPai()">
+              <span class="menu-icon">▤</span>
+              Dashboard
+            </a>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- Menu de Clientes -->
+      <div class="menu-section">
+        <h3 class="menu-title">Clientes</h3>
+        <ul class="client-list">
+          <!-- Drex Imóveis -->
+          <li class="client-container" id="container-client-drex">
+            <div class="client-item" id="sidebar-client-drex" onclick="toggleClientExpand('Drex Imóveis')">
+              <div class="client-name-wrapper">
+                <span class="status-dot healthy"></span>
+                <span>Drex Imóveis</span>
+              </div>
+              <span class="client-chevron" id="chevron-drex">▼</span>
+            </div>
+            <ul class="analysis-menu" id="analysis-menu-drex" style="display: none;"></ul>
+          </li>
+          
+          <!-- Orion Tech -->
+          <li class="client-container" id="container-client-orion">
+            <div class="client-item" id="sidebar-client-orion" onclick="toggleClientExpand('Orion Tech')">
+              <div class="client-name-wrapper">
+                <span class="status-dot healthy"></span>
+                <span>Orion Tech</span>
+              </div>
+              <span class="client-chevron" id="chevron-orion">▼</span>
+            </div>
+            <ul class="analysis-menu" id="analysis-menu-orion" style="display: none;"></ul>
+          </li>
+
+          <!-- Lumera Saúde -->
+          <li class="client-container" id="container-client-lumera">
+            <div class="client-item" id="sidebar-client-lumera" onclick="toggleClientExpand('Lumera Saúde')">
+              <div class="client-name-wrapper">
+                <span class="status-dot healthy"></span>
+                <span>Lumera Saúde</span>
+              </div>
+              <span class="client-chevron" id="chevron-lumera">▼</span>
+            </div>
+            <ul class="analysis-menu" id="analysis-menu-lumera" style="display: none;"></ul>
+          </li>
+
+          <!-- Volks B2B -->
+          <li class="client-container" id="container-client-volks">
+            <div class="client-item" id="sidebar-client-volks" onclick="toggleClientExpand('Volks B2B')">
+              <div class="client-name-wrapper">
+                <span class="status-dot critical"></span>
+                <span>Volks B2B</span>
+              </div>
+              <span class="client-chevron" id="chevron-volks">▼</span>
+            </div>
+            <ul class="analysis-menu" id="analysis-menu-volks" style="display: none;"></ul>
+          </li>
+        </ul>
+        <div class="client-more-link" id="client-more-link" onclick="toggleClientesDropdown(event)">Ver todos os clientes</div>
+      </div>
+      
+      <!-- Menu de Ferramentas -->
+      <div class="menu-section">
+        <h3 class="menu-title">Ferramentas</h3>
+        <ul class="menu-list">
+          <li class="client-container" id="container-comercial" style="list-style: none; margin-bottom: 4px;">
+            <div class="client-item" id="sidebar-comercial-header" onclick="toggleComercialExpand()" style="padding-left: 12px; margin-bottom: 2px;">
+              <div class="client-name-wrapper">
+                <span class="logo-icon" style="margin-right: 4px; font-size: 11px;">💼</span>
+                <span style="font-family: var(--font-family-body); font-size: 13px; font-weight: 500;">Comercial</span>
+              </div>
+              <span class="client-chevron" id="chevron-comercial" style="font-size: 9px; transition: var(--transition-fast);">▼</span>
+            </div>
+            <ul class="analysis-menu" id="analysis-menu-comercial" style="display: none; padding-left: 20px;">
+              <li class="analysis-item" id="analysis-comercial-radar" onclick="selectComercialTab('radar')">Radar de empresas</li>
+              <li class="analysis-item" id="analysis-comercial-pipeline" onclick="selectComercialTab('pipeline')">Pipeline comercial</li>
+              <li class="analysis-item" id="analysis-comercial-contatos" onclick="selectComercialTab('contatos')">Base de contatos</li>
+            </ul>
+          </li>
+          <li>
+            <a class="menu-link" id="menu-relatorios-link" onclick="showRelatorios()">
+              <span class="menu-icon">📊</span>
+              Relatórios
+            </a>
+          </li>
+          <li>
+            <a class="menu-link" id="menu-colaboradores-link" onclick="showColaboradores()">
+              <span class="menu-icon">👥</span>
+              Colaboradores
+            </a>
+          </li>
+          <li>
+            <a class="menu-link" onclick="alert('Módulo Configurações - Em breve no PRATA')">
+              <span class="menu-icon">⚙</span>
+              Configurações
+            </a>
+          </li>
+          <li>
+            <a class="menu-link" id="theme-toggle-link" onclick="toggleTheme()">
+              <span class="menu-icon">☀</span>
+              <span id="theme-toggle-text">Modo claro</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+    </aside>
+    
+    <!-- ÁREA PRINCIPAL DO DASHBOARD -->
+    <main class="main-panel">
+      
+      <!-- ========================================== -->
+      <!-- VISTA 1: DASHBOARD PAI (AGÊNCIA)           -->
+      <!-- ========================================== -->
+      <div id="view-dashboard-pai">
+        <!-- HEADER / TOPO -->
+        <header class="header-wrapper">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Bom dia, Felippe.</h1>
+            <span class="header-meta">18 clientes ativos &middot; <span id="current-period-text">All Time</span></span>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <!-- Filtros Rápidos -->
+            <div class="filters-container" style="position: relative; display: flex; align-items: center; gap: 12px;">
+              <button id="pai-filter-period-btn" class="filter-select" style="font-size: 11px; height: 28px; padding: 0 12px; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); text-align: left; cursor: pointer; min-width: 155px; display: flex; align-items: center; justify-content: space-between;" onclick="togglePeriodDropdown('pai', event)">
+                <span id="pai-period-btn-text">01/05/2025 - 31/05/2025</span>
+                <span style="font-size: 8px; margin-left: 6px; color: var(--text-muted);">▼</span>
+              </button>
+              
+              <!-- Date Picker Dropdown Overlay -->
+              <div id="pai-period-dropdown" class="period-dropdown-box" style="display: none; position: absolute; top: 32px; left: 0; z-index: 100; width: 300px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.5); padding: 16px; flex-direction: column; gap: 12px;">
+                <!-- Tabs / Options -->
+                <div class="calendar-presets" style="display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--divider-color); padding-bottom: 10px; margin-bottom: 4px;">
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('pai', 7)">7D</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('pai', 14)">14D</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('pai', 30)">30D</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('pai', 180)">6M</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('pai', 'all')">Todo período</span>
+                </div>
+                
+                <!-- Inputs de início e fim -->
+                <div style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
+                  <div style="position: relative; display: flex; align-items: center; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; width: 120px;">
+                    <span style="font-size: 11px; margin-right: 6px; color: var(--text-muted);">🗓️</span>
+                    <input type="text" id="pai-period-start" value="01/05/2025" style="background: transparent; border: none; color: var(--text-primary); font-size: 11px; width: 100%; outline: none;" onchange="onPeriodInputChange('pai')">
+                  </div>
+                  
+                  <span style="color: var(--text-muted); font-size: 11px;">—</span>
+                  
+                  <div style="position: relative; display: flex; align-items: center; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; width: 120px; border-color: #a1a1aa;">
+                    <span style="font-size: 11px; margin-right: 6px; color: #a1a1aa;">🗓️</span>
+                    <input type="text" id="pai-period-end" value="31/05/2025" style="background: transparent; border: none; color: var(--text-primary); font-size: 11px; width: 100%; outline: none;" onchange="onPeriodInputChange('pai')">
+                  </div>
+                </div>
+
+                <!-- Calendário Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <span style="cursor: pointer; color: #a1a1aa; font-size: 12px; font-weight: bold; padding: 0 4px;" onclick="prevCalendarMonth('pai')">&lt;</span>
+                  <span id="pai-calendar-month-year" style="font-size: 11px; font-weight: bold; color: var(--text-primary);">Maio 2025</span>
+                  <span style="cursor: pointer; color: #a1a1aa; font-size: 12px; font-weight: bold; padding: 0 4px;" onclick="nextCalendarMonth('pai')">&gt;</span>
+                </div>
+
+                <!-- Dias da Semana -->
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; gap: 4px; font-size: 9px; color: var(--text-muted); font-weight: bold; margin-top: 4px;">
+                  <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                </div>
+
+                <!-- Grid de Dias -->
+                <div id="pai-calendar-days-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 4px;">
+                  <!-- Preenchido via JS -->
+                </div>
+
+                <!-- Footer Ações -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                  <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 16px;" onclick="applyPeriodFilter('pai', event)">Aplicar</button>
+                </div>
+              </div>
+              
+              <div class="filter-select-wrapper">
+                <select class="filter-select" id="client-filter" onchange="if(this.value !== 'Todos os clientes') { selectClient(this.value); } else { showDashboardPai(); }">
+                  <option value="Todos os clientes">Todos os clientes</option>
+                  <option value="Drex Imóveis">Drex Imóveis</option>
+                  <option value="Orion Tech">Orion Tech</option>
+                  <option value="Lumera Saúde">Lumera Saúde</option>
+                  <option value="Volks B2B">Volks B2B</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Header Controls -->
+            <div class="header-controls">
+              <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+              <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+              <div class="header-avatar">FG</div>
+            </div>
+          </div>
+        </header>
+        
+        <!-- BIG NUMBERS -->
+        <section class="metrics-section">
+          <!-- Big Cards (Top Row) -->
+          <div class="metrics-row-top">
+            <!-- Investimento Total -->
+            <div class="metric-card">
+              <div class="card-header-wrapper">
+                <span class="card-title">Investimento Total</span>
+              </div>
+              <div class="card-value" id="val-investimento">R$482k</div>
+              <div class="card-footer">
+                <span class="card-trend up" id="trend-investimento">▲ +18%</span>
+                <span class="card-period-label">vs período anterior</span>
+              </div>
+            </div>
+            
+            <!-- Receita Gerada -->
+            <div class="metric-card">
+              <div class="card-header-wrapper">
+                <span class="card-title">Receita Gerada</span>
+              </div>
+              <div class="card-value highlight-green" id="val-receita">R$2,84M</div>
+              <div class="card-footer">
+                <span class="card-trend up" id="trend-receita">▲ +32%</span>
+                <span class="card-period-label">vs período anterior</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Small Cards (Bottom Row) -->
+          <div class="metrics-row-bottom">
+            <!-- Taxa de Conversão -->
+            <div class="metric-card">
+              <div class="card-header-wrapper">
+                <span class="card-title">Taxa de Conversão</span>
+              </div>
+              <div class="card-value" id="val-conversao">2,7%</div>
+              <div class="card-footer">
+                <span class="card-trend stable" style="color: var(--text-muted)">Meta: 8%</span>
+                <span class="card-period-label">Média carteira</span>
+              </div>
+            </div>
+            
+            <!-- CPL Médio -->
+            <div class="metric-card">
+              <div class="card-header-wrapper">
+                <span class="card-title">CPL Médio</span>
+              </div>
+              <div class="card-value" id="val-cpl">R$37</div>
+              <div class="card-footer">
+                <span class="card-trend stable" id="trend-cpl">■ Estável</span>
+                <span class="card-period-label">Custo por lead</span>
+              </div>
+            </div>
+            
+            <!-- CPA Médio -->
+            <div class="metric-card">
+              <div class="card-header-wrapper">
+                <span class="card-title">CPA Médio</span>
+              </div>
+              <div class="card-value" id="val-cpa">R$121</div>
+              <div class="card-footer">
+                <span class="card-trend stable" style="color: var(--text-muted)">Custo por aquisição</span>
+              </div>
+            </div>
+            
+            <!-- ROI -->
+            <div class="metric-card">
+              <div class="card-header-wrapper">
+                <span class="card-title">ROI Médio</span>
+              </div>
+              <div class="card-value highlight-green" id="val-roi">489%</div>
+              <div class="card-footer">
+                <span class="card-trend up" id="trend-roi">▲ +12%</span>
+                <span class="card-period-label">vs período anterior</span>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+        
+        <!-- BLOCO PRINCIPAL: O QUE PRECISA DA SUA ATENÇÃO HOJE -->
+        <section class="section-container">
+          <div class="section-heading-wrapper">
+            <h2 class="section-heading">O que precisa da sua atenção hoje</h2>
+          </div>
+          
+          <div class="attention-grid">
+            <!-- Insight 1 (Crítico) -->
+            <div class="attention-card critical-indicator" onclick="selectClient('Volks B2B')">
+              <div class="attention-card-header">
+                <span class="attention-client-name">Volks B2B</span>
+                <span class="attention-badge critical">Crítico</span>
+              </div>
+              <div class="attention-card-body">
+                <span class="attention-desc">Volks B2B está abaixo do break-even financeiro.</span>
+                <span class="attention-impact">Impacto: ROAS de 1,9x nas últimas 3 semanas.</span>
+              </div>
+              <div class="attention-card-action">
+                <span class="action-prefix">Ação sugerida:</span>Revisar campanhas de Meta Ads e redistribuir verba para públicos validados.
+              </div>
+            </div>
+            
+            <!-- Insight 2 (Atenção) -->
+            <div class="attention-card attention-indicator" onclick="selectClient('Lumera Saúde')">
+              <div class="attention-card-header">
+                <span class="attention-client-name">Lumera Saúde</span>
+                <span class="attention-badge attention">Atenção</span>
+              </div>
+              <div class="attention-card-body">
+                <span class="attention-desc">Queda acentuada na taxa de qualificação de leads.</span>
+                <span class="attention-impact">Impacto: Qualificação caiu 22% nas últimas 3 semanas.</span>
+              </div>
+              <div class="attention-card-action">
+                <span class="action-prefix">Ação sugerida:</span>Revisar filtros de formulário e segmentações de topo de funil no Google Ads.
+              </div>
+            </div>
+            
+            <!-- Insight 3 (Atenção) -->
+            <div class="attention-card attention-indicator" onclick="selectClient('RetailMax')">
+              <div class="attention-card-header">
+                <span class="attention-client-name">RetailMax</span>
+                <span class="attention-badge attention">Atenção</span>
+              </div>
+              <div class="attention-card-body">
+                <span class="attention-desc">Dados comerciais do funil estão desatualizados.</span>
+                <span class="attention-impact">Impacto: Sem novas atualizações comerciais há 11 dias.</span>
+              </div>
+              <div class="attention-card-action">
+                <span class="action-prefix">Ação sugerida:</span>Notificar equipe comercial do cliente para atualização das propostas pendentes.
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+        
+        <!-- FUNIL CONSOLIDADO DA CARTEIRA -->
+        <section class="section-container">
+          <div class="section-heading-wrapper">
+            <h2 class="section-heading">Funil consolidado da carteira</h2>
+          </div>
+          
+          <div class="funnel-card">
+            <!-- Métricas das Etapas -->
+            <div class="funnel-grid">
+              <div class="funnel-step">
+                <span class="funnel-step-label">Em Abordagem</span>
+                <span class="funnel-step-value" id="funnel-val-1">12.840</span>
+              </div>
+              <div class="funnel-step">
+                <span class="funnel-step-label">Qualificados</span>
+                <span class="funnel-step-value" id="funnel-val-2">5.136</span>
+              </div>
+              <div class="funnel-step">
+                <span class="funnel-step-label">Propostas</span>
+                <span class="funnel-step-value" id="funnel-val-3">1.541</span>
+              </div>
+              <div class="funnel-step">
+                <span class="funnel-step-label">Vendas</span>
+                <span class="funnel-step-value" id="funnel-val-4">342</span>
+              </div>
+            </div>
+            
+            <!-- Visualização Gráfica do Funil -->
+            <div class="funnel-bar-container">
+              <div class="funnel-segment" style="width: 40%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="conversion-badge" id="funnel-pct-1">40%</div>
+              </div>
+              <div class="funnel-segment" style="width: 30%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="conversion-badge" id="funnel-pct-2">30%</div>
+              </div>
+              <div class="funnel-segment" style="width: 22%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="conversion-badge" id="funnel-pct-3">22%</div>
+              </div>
+              <div class="funnel-segment" style="width: 8%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="final-conversion-badge" id="funnel-pct-final">2,7% final</div>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+        
+        <!-- SAÚDE DA CARTEIRA -->
+        <section class="section-container">
+          <div class="section-heading-wrapper">
+            <h2 class="section-heading">Saúde da carteira</h2>
+          </div>
+          
+          <div class="health-row">
+            <!-- Saudáveis -->
+            <div class="health-card healthy">
+              <div class="health-number-indicator">12</div>
+              <div class="health-info">
+                <div class="health-title-group">
+                  <span class="health-status-name">Saudáveis</span>
+                </div>
+                <span class="health-examples">
+                  Drex Imóveis, Orion Tech, Nexa Edu <span class="health-examples-muted">+ 9 mais</span>
+                </span>
+              </div>
+            </div>
+            
+            <!-- Atenção -->
+            <div class="health-card attention">
+              <div class="health-number-indicator">4</div>
+              <div class="health-info">
+                <div class="health-title-group">
+                  <span class="health-status-name">Atenção</span>
+                </div>
+                <span class="health-examples">
+                  Lumera Saúde, AgroVale, Clínica Prime, Studio Fit
+                </span>
+              </div>
+            </div>
+            
+            <!-- Críticos -->
+            <div class="health-card critical">
+              <div class="health-number-indicator">2</div>
+              <div class="health-info">
+                <div class="health-title-group">
+                  <span class="health-status-name">Críticos</span>
+                </div>
+                <span class="health-examples">
+                  Volks B2B, RetailMax
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+        
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+        
+        <!-- TABELA & MRR LAYOUT -->
+        <div class="dashboard-footer-layout">
+          
+          <!-- TABELA: CLIENTES QUE PRECISAM DE ATENÇÃO -->
+          <section class="table-card">
+            <h2 class="section-heading">Clientes que precisam de atenção</h2>
+            
+            <div class="table-wrapper">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Cliente</th>
+                    <th>Status</th>
+                    <th>Última Atualização</th>
+                    <th>Problema Identificado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr onclick="selectClient('Volks B2B')" style="cursor: pointer;">
+                    <td class="table-client-cell">
+                      <span class="status-dot critical"></span>
+                      <span>Volks B2B</span>
+                    </td>
+                    <td><span class="table-badge critical">Crítico</span></td>
+                    <td>Hoje</td>
+                    <td class="table-problem-cell">ROAS 1,9x — abaixo do break-even</td>
+                  </tr>
+                  <tr onclick="alert('RetailMax em desenvolvimento')" style="cursor: pointer;">
+                    <td class="table-client-cell">
+                      <span class="status-dot critical"></span>
+                      <span>RetailMax</span>
+                    </td>
+                    <td><span class="table-badge critical">Crítico</span></td>
+                    <td class="table-date-cell critical-date">11 dias atrás</td>
+                    <td class="table-problem-cell">Dados comerciais desatualizados</td>
+                  </tr>
+                  <tr onclick="selectClient('Lumera Saúde')" style="cursor: pointer;">
+                    <td class="table-client-cell">
+                      <span class="status-dot attention"></span>
+                      <span>Lumera Saúde</span>
+                    </td>
+                    <td><span class="table-badge attention">Atenção</span></td>
+                    <td>Hoje</td>
+                    <td class="table-problem-cell">Qualificação caiu 22% em 3 semanas</td>
+                  </tr>
+                  <tr onclick="alert('AgroVale em desenvolvimento')" style="cursor: pointer;">
+                    <td class="table-client-cell">
+                      <span class="status-dot attention"></span>
+                      <span>AgroVale</span>
+                    </td>
+                    <td><span class="table-badge attention">Atenção</span></td>
+                    <td class="table-date-cell attention-date">8 dias atrás</td>
+                    <td class="table-problem-cell">Dados de vendas desatualizados</td>
+                  </tr>
+                  <tr onclick="alert('Clínica Prime em desenvolvimento')" style="cursor: pointer;">
+                    <td class="table-client-cell">
+                      <span class="status-dot attention"></span>
+                      <span>Clínica Prime</span>
+                    </td>
+                    <td><span class="table-badge attention">Atenção</span></td>
+                    <td>9 dias atrás</td>
+                    <td class="table-problem-cell">Conversão abaixo da média</td>
+                  </tr>
+                  <tr onclick="alert('Studio Fit em desenvolvimento')" style="cursor: pointer;">
+                    <td class="table-client-cell">
+                      <span class="status-dot attention"></span>
+                      <span>Studio Fit</span>
+                    </td>
+                    <td><span class="table-badge attention">Atenção</span></td>
+                    <td>Ontem</td>
+                    <td class="table-problem-cell">CPL subiu 28% vs mês anterior</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+          
+          <!-- CARD MRR / CARTEIRA COMPLETA -->
+          <section class="mrr-card">
+            <h2 class="section-heading">MRR — carteira completa</h2>
+            
+            <div class="mrr-content">
+              <!-- Gráfico Donut (SVG Nativo) -->
+              <div class="chart-donut-wrapper">
+                <svg width="130" height="130" class="donut-svg" viewBox="0 0 130 130">
+                  <circle class="donut-segment-bg" cx="65" cy="65" r="45"></circle>
+                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#3b82f6" stroke-dasharray="50.9 282.7" stroke-dashoffset="0"></circle>
+                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#8b5cf6" stroke-dasharray="31.1 282.7" stroke-dashoffset="-50.9"></circle>
+                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#ec4899" stroke-dasharray="25.4 282.7" stroke-dashoffset="-82.0"></circle>
+                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#f59e0b" stroke-dasharray="22.6 282.7" stroke-dashoffset="-107.4"></circle>
+                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#f97316" stroke-dasharray="14.1 282.7" stroke-dashoffset="-130.0"></circle>
+                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#4b5563" stroke-dasharray="138.5 282.7" stroke-dashoffset="-144.1"></circle>
+                </svg>
+                
+                <div class="chart-inner-text">
+                  <span class="chart-inner-label">Total MRR</span>
+                  <span class="chart-inner-value">R$2,84M</span>
+                </div>
+              </div>
+              
+              <!-- Legenda Detalhada -->
+              <ul class="mrr-legend-list">
+                <li class="mrr-legend-item">
+                  <div class="legend-label-wrapper">
+                    <span class="legend-color-indicator" style="background-color: #3b82f6;"></span>
+                    <span class="legend-name">Drex Imóveis</span>
+                  </div>
+                  <div class="legend-values">
+                    <span class="legend-value-cash">R$520k</span>
+                    <span class="legend-value-pct">18%</span>
+                  </div>
+                </li>
+                <li class="mrr-legend-item">
+                  <div class="legend-label-wrapper">
+                    <span class="legend-color-indicator" style="background-color: #8b5cf6;"></span>
+                    <span class="legend-name">Orion Tech</span>
+                  </div>
+                  <div class="legend-values">
+                    <span class="legend-value-cash">R$310k</span>
+                    <span class="legend-value-pct">11%</span>
+                  </div>
+                </li>
+                <li class="mrr-legend-item">
+                  <div class="legend-label-wrapper">
+                    <span class="legend-color-indicator" style="background-color: #ec4899;"></span>
+                    <span class="legend-name">Nexa Edu</span>
+                  </div>
+                  <div class="legend-values">
+                    <span class="legend-value-cash">R$248k</span>
+                    <span class="legend-value-pct">9%</span>
+                  </div>
+                </li>
+                <li class="mrr-legend-item">
+                  <div class="legend-label-wrapper">
+                    <span class="legend-color-indicator" style="background-color: #f59e0b;"></span>
+                    <span class="legend-name">Lumera Saúde</span>
+                  </div>
+                  <div class="legend-values">
+                    <span class="legend-value-cash">R$220k</span>
+                    <span class="legend-value-pct">8%</span>
+                  </div>
+                </li>
+                <li class="mrr-legend-item">
+                  <div class="legend-label-wrapper">
+                    <span class="legend-color-indicator" style="background-color: #f97316;"></span>
+                    <span class="legend-name">AgroVale</span>
+                  </div>
+                  <div class="legend-values">
+                    <span class="legend-value-cash">R$140k</span>
+                    <span class="legend-value-pct">5%</span>
+                  </div>
+                </li>
+                <li class="mrr-legend-item">
+                  <div class="legend-label-wrapper">
+                    <span class="legend-color-indicator" style="background-color: #4b5563;"></span>
+                    <span class="legend-name">Outros (13)</span>
+                  </div>
+                  <div class="legend-values">
+                    <span class="legend-value-cash">R$1,40M</span>
+                    <span class="legend-value-pct">49%</span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            
+            <div class="mrr-total-row">
+              <span class="mrr-total-label">Faturamento Total</span>
+              <span class="mrr-total-value">R$2,84M</span>
+            </div>
+          </section>
+        </div>
+      </div>
+      
+      <!-- ========================================== -->
+      <!-- VISTA 2: DASHBOARD FILHO (CLIENTE)         -->
+      <!-- ========================================== -->
+      <div id="view-dashboard-filho" style="display: none;">
+        <!-- Header do Cliente -->
+        <header class="header-wrapper">
+          <div class="header-info-container">
+            <h1 class="header-welcome" id="c-welcome">Drex Imóveis</h1>
+            <span class="header-meta" id="c-meta">Imobiliário &middot; Maio 2025</span>
+            <div class="client-meta-details" style="display: flex; gap: 16px; margin-top: 6px; font-size: 11px; color: var(--text-secondary);">
+              <span><strong>Responsável:</strong> <span id="c-owner">Felippe G.</span></span>
+              <span><strong>Última atualização:</strong> <span id="c-last-updated">Hoje às 13:10</span></span>
+            </div>
+          </div>
+          
+          <div class="client-header-right" style="display: flex; align-items: flex-end; flex-direction: column; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span class="table-badge healthy" id="c-status-badge" style="font-size: 12px; padding: 6px 14px;">Saudável</span>
+              <div class="header-controls">
+                <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+                <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+                <div class="header-avatar">FG</div>
+              </div>
+            </div>
+            
+            <div class="filters-container" style="position: relative;">
+              <button id="filho-filter-period-btn" class="filter-select" style="font-size: 11px; height: 28px; padding: 0 12px; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); text-align: left; cursor: pointer; min-width: 155px; display: flex; align-items: center; justify-content: space-between;" onclick="togglePeriodDropdown('filho', event)">
+                <span id="filho-period-btn-text">01/05/2025 - 31/05/2025</span>
+                <span style="font-size: 8px; margin-left: 6px; color: var(--text-muted);">▼</span>
+              </button>
+              
+              <!-- Date Picker Dropdown Overlay -->
+              <div id="filho-period-dropdown" class="period-dropdown-box" style="display: none; position: absolute; top: 32px; right: 0; z-index: 100; width: 300px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.5); padding: 16px; flex-direction: column; gap: 12px;">
+                <!-- Tabs / Options -->
+                <div class="calendar-presets" style="display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--divider-color); padding-bottom: 10px; margin-bottom: 4px;">
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('filho', 7)">7D</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('filho', 14)">14D</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('filho', 30)">30D</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('filho', 180)">6M</span>
+                  <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('filho', 'all')">Todo período</span>
+                </div>
+                
+                <!-- Inputs de início e fim -->
+                <div style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
+                  <div style="position: relative; display: flex; align-items: center; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; width: 120px;">
+                    <span style="font-size: 11px; margin-right: 6px; color: var(--text-muted);">🗓️</span>
+                    <input type="text" id="filho-period-start" value="01/05/2025" style="background: transparent; border: none; color: var(--text-primary); font-size: 11px; width: 100%; outline: none;" onchange="onPeriodInputChange('filho')">
+                  </div>
+                  
+                  <span style="color: var(--text-muted); font-size: 11px;">—</span>
+                  
+                  <div style="position: relative; display: flex; align-items: center; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; width: 120px; border-color: #a1a1aa;">
+                    <span style="font-size: 11px; margin-right: 6px; color: #a1a1aa;">🗓️</span>
+                    <input type="text" id="filho-period-end" value="31/05/2025" style="background: transparent; border: none; color: var(--text-primary); font-size: 11px; width: 100%; outline: none;" onchange="onPeriodInputChange('filho')">
+                  </div>
+                </div>
+
+                <!-- Calendário Header -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                  <span style="cursor: pointer; color: #a1a1aa; font-size: 12px; font-weight: bold; padding: 0 4px;" onclick="prevCalendarMonth('filho')">&lt;</span>
+                  <span id="filho-calendar-month-year" style="font-size: 11px; font-weight: bold; color: var(--text-primary);">Maio 2025</span>
+                  <span style="cursor: pointer; color: #a1a1aa; font-size: 12px; font-weight: bold; padding: 0 4px;" onclick="nextCalendarMonth('filho')">&gt;</span>
+                </div>
+
+                <!-- Dias da Semana -->
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; gap: 4px; font-size: 9px; color: var(--text-muted); font-weight: bold; margin-top: 4px;">
+                  <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+                </div>
+
+                <!-- Grid de Dias -->
+                <div id="filho-calendar-days-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 4px;">
+                  <!-- Preenchido via JS -->
+                </div>
+
+                <!-- Footer Ações -->
+                <div style="display: flex; justify-content: flex-end; margin-top: 8px;">
+                  <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 16px;" onclick="applyPeriodFilter('filho', event)">Aplicar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <!-- Big Numbers (6 Cards em uma linha) -->
+        <section class="metrics-row-six">
+          <!-- Investimento -->
+          <div class="metric-card">
+            <span class="card-title">Investimento</span>
+            <div class="card-value" id="c-num-investimento">R$52k</div>
+          </div>
+          <!-- Receita -->
+          <div class="metric-card">
+            <span class="card-title">Receita</span>
+            <div class="card-value highlight-green" id="c-num-receita">R$520k</div>
+          </div>
+          <!-- Conversão -->
+          <div class="metric-card">
+            <span class="card-title">Conversão</span>
+            <div class="card-value" id="c-num-conversao">3,1%</div>
+          </div>
+          <!-- CPL -->
+          <div class="metric-card">
+            <span class="card-title">CPL</span>
+            <div class="card-value" id="c-num-cpl">R$42</div>
+          </div>
+          <!-- CPA -->
+          <div class="metric-card">
+            <span class="card-title">CPA</span>
+            <div class="card-value" id="c-num-cpa">R$52</div>
+          </div>
+          <!-- ROI / ROAS -->
+          <div class="metric-card">
+            <span class="card-title" id="c-roi-title">ROI</span>
+            <div class="card-value highlight-green" id="c-num-roi">900%</div>
+          </div>
+        </section>
+
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+
+        <!-- Tabelas de Fontes de Dados e IA Insights (Lado a Lado) -->
+        <div class="dashboard-footer-layout">
+          <!-- Atualização de Dados -->
+          <section class="table-card">
+            <h2 class="section-heading">Atualizações de dados</h2>
+            <div class="table-wrapper">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th>Fonte de Dados</th>
+                    <th>Última Atualização</th>
+                    <th>Status</th>
+                    <th>Observação</th>
+                  </tr>
+                </thead>
+                <tbody id="c-table-updates">
+                  <!-- Linhas carregadas dinamicamente -->
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- Insights de IA -->
+          <section class="mrr-card" style="justify-content: flex-start; gap: 12px;">
+            <h2 class="section-heading">✦ Insights de IA</h2>
+            <div class="insights-container" style="margin-top: 8px;">
+              <ul class="insights-list" id="c-insights-list" style="list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 12px; color: var(--text-primary);">
+                <!-- Carregados via JS -->
+              </ul>
+            </div>
+          </section>
+        </div>
+
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+
+        <!-- Funil do Cliente -->
+        <section class="section-container">
+          <h2 class="section-heading">Funil do cliente</h2>
+          <div class="funnel-card">
+            <div class="funnel-grid">
+              <div class="funnel-step">
+                <span class="funnel-step-label">Em Abordagem</span>
+                <span class="funnel-step-value" id="c-funnel-val-1">1.240</span>
+              </div>
+              <div class="funnel-step">
+                <span class="funnel-step-label">Qualificados</span>
+                <span class="funnel-step-value" id="c-funnel-val-2">496</span>
+              </div>
+              <div class="funnel-step">
+                <span class="funnel-step-label">Propostas</span>
+                <span class="funnel-step-value" id="c-funnel-val-3">148</span>
+              </div>
+              <div class="funnel-step">
+                <span class="funnel-step-label">Vendas</span>
+                <span class="funnel-step-value" id="c-funnel-val-4">38</span>
+              </div>
+            </div>
+            
+            <div class="funnel-bar-container">
+              <div class="funnel-segment" style="width: 40%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="conversion-badge" id="c-funnel-pct-1">40%</div>
+              </div>
+              <div class="funnel-segment" style="width: 30%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="conversion-badge" id="c-funnel-pct-2">30%</div>
+              </div>
+              <div class="funnel-segment" style="width: 25%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="conversion-badge" id="c-funnel-pct-3">25%</div>
+              </div>
+              <div class="funnel-segment" style="width: 5%;">
+                <div class="funnel-segment-fill"></div>
+                <div class="final-conversion-badge" id="c-funnel-pct-final">3,1% final</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+
+        <!-- Rodapé do Cliente (Origem e Perda lado a lado) -->
+        <div class="client-detail-grid-two-columns" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+          <!-- Origem de Leads -->
+          <section class="table-card">
+            <h2 class="section-heading">Origem dos leads</h2>
+            <ul id="c-leads-source-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;">
+              <!-- JS -->
+            </ul>
+          </section>
+
+          <!-- Motivos de Perda -->
+          <section class="table-card">
+            <h2 class="section-heading">Motivos de perda</h2>
+            <ul id="c-leads-loss-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;">
+              <!-- JS -->
+            </ul>
+          </section>
+        </div>
+
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+
+        <!-- SEÇÃO: PERFORMANCE ADS -->
+        <section class="section-container" id="c-performance-ads-section">
+          <!-- Cabeçalho da Seção -->
+          <div class="section-heading-wrapper" style="align-items: center;">
+            <div>
+              <h2 class="section-heading">📢 Performance Ads</h2>
+              <span class="header-meta" style="font-size: 11px; margin-top: 2px; display: inline-block;">Google Ads & Meta Ads &middot; <span id="c-ads-period-label">12/05 a 22/06</span></span>
+            </div>
+            
+            <!-- Abas Rápidas por Canal de Ads -->
+            <div class="filters-container">
+              <button class="filter-btn active" id="c-ads-tab-todas" onclick="filterAdsPlatform('Todas', this)">Todas</button>
+              <button class="filter-btn" onclick="filterAdsPlatform('Google Ads', this)">Google Ads</button>
+              <button class="filter-btn" onclick="filterAdsPlatform('Meta Ads', this)">Meta Ads</button>
+            </div>
+          </div>
+
+          <!-- Big Numbers de Mídia Ads (5 cards) -->
+          <div class="metrics-row-five">
+            <!-- Investimento Total -->
+            <div class="metric-card">
+              <span class="card-title">Investimento Total</span>
+              <div class="card-value" id="c-ads-investimento">R$43.628,62</div>
+            </div>
+            <!-- Cliques -->
+            <div class="metric-card">
+              <span class="card-title">Cliques</span>
+              <div class="card-value" id="c-ads-cliques">22.803</div>
+            </div>
+            <!-- Conversões -->
+            <div class="metric-card">
+              <span class="card-title">Conversões</span>
+              <div class="card-value highlight-green" id="c-ads-conversoes">382</div>
+            </div>
+            <!-- CPA Médio -->
+            <div class="metric-card">
+              <span class="card-title">CPA Médio</span>
+              <div class="card-value" id="c-ads-cpa">R$114,25</div>
+            </div>
+            <!-- CTR Médio -->
+            <div class="metric-card">
+              <span class="card-title">CTR Médio</span>
+              <div class="card-value" id="c-ads-ctr">1,28%</div>
+            </div>
+          </div>
+
+          <!-- Gráfico SVG: Evolução Diária (Investimento x Conversões) -->
+          <div class="table-card">
+            <h2 class="section-heading" style="font-size: 13px; display: flex; align-items: center; gap: 6px;">
+              📈 Evolução Diária (Investimento &times; Conversões)
+            </h2>
+            <div style="position: relative; width: 100%; margin-top: 20px;" id="c-ads-chart-container">
+              <!-- O gráfico SVG será gerado dinamicamente via JS por cliente -->
+            </div>
+            <!-- Legenda do Gráfico -->
+            <div style="display: flex; justify-content: center; gap: 24px; font-size: 11px; margin-top: 16px; color: var(--text-secondary);">
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 10px; height: 10px; background-color: #64748b; border-radius: 2px;"></span>
+                <span>Investimento</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 10px; height: 10px; background-color: #10b981; border-radius: 50%;"></span>
+                <span>Conversões</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Comparativo por Plataforma (Google vs Meta) -->
+          <div class="client-detail-grid-two-columns" style="gap: 12px;">
+            <!-- Google Ads -->
+            <div class="metric-card" style="border-left: 3px solid #3b82f6; gap: 10px;">
+              <span class="card-title" style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #3b82f6;"></span>
+                Google Ads
+              </span>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
+                <div>
+                  <span class="card-title" style="font-size: 9px;">Investimento</span>
+                  <div class="card-value" id="c-gads-investimento" style="font-size: 16px; margin-top: 2px;">R$18.148,09</div>
+                </div>
+                <div>
+                  <span class="card-title" style="font-size: 9px;">Cliques</span>
+                  <div class="card-value" id="c-gads-cliques" style="font-size: 16px; margin-top: 2px;">6.059</div>
+                </div>
+                <div>
+                  <span class="card-title" style="font-size: 9px;">Conversões</span>
+                  <div class="card-value highlight-green" id="c-gads-conversoes" style="font-size: 16px; margin-top: 2px;">347</div>
+                </div>
+                <div>
+                  <span class="card-title" style="font-size: 9px;">CPA</span>
+                  <div class="card-value" id="c-gads-cpa" style="font-size: 16px; margin-top: 2px;">R$52,32</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Meta Ads -->
+            <div class="metric-card" style="border-left: 3px solid #8b5cf6; gap: 10px;">
+              <span class="card-title" style="display: flex; align-items: center; gap: 6px;">
+                <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #8b5cf6;"></span>
+                Meta Ads
+              </span>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
+                <div>
+                  <span class="card-title" style="font-size: 9px;">Investimento</span>
+                  <div class="card-value" id="c-mads-investimento" style="font-size: 16px; margin-top: 2px;">R$25.480,53</div>
+                </div>
+                <div>
+                  <span class="card-title" style="font-size: 9px;">Cliques</span>
+                  <div class="card-value" id="c-mads-cliques" style="font-size: 16px; margin-top: 2px;">16.744</div>
+                </div>
+                <div>
+                  <span class="card-title" style="font-size: 9px;">Conversões</span>
+                  <div class="card-value highlight-green" id="c-mads-conversoes" style="font-size: 16px; margin-top: 2px;">35</div>
+                </div>
+                <div>
+                  <span class="card-title" style="font-size: 9px;">CPA</span>
+                  <div class="card-value" id="c-mads-cpa" style="font-size: 16px; margin-top: 2px;">R$728,02</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabela de Campanhas -->
+          <div class="table-card">
+            <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <h2 class="section-heading" id="c-campaigns-title">Campanhas (21)</h2>
+              
+              <!-- Busca e Filtros da Tabela -->
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <input type="text" id="search-campaign" class="filter-select" placeholder="Buscar campanha..." oninput="filterCampaigns()" style="width: 160px; height: 32px; padding: 6px 12px; font-size: 11px;">
+                
+                <select id="filter-camp-platform" class="filter-select" onchange="filterCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">
+                  <option value="Todas">Plataforma (Todas)</option>
+                  <option value="Google Ads">Google Ads</option>
+                  <option value="Meta Ads">Meta Ads</option>
+                </select>
+                
+                <select id="filter-camp-objective" class="filter-select" onchange="filterCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">
+                  <option value="Todos">Objetivo (Todos)</option>
+                  <option value="Leads">Leads</option>
+                  <option value="PMAX">PMAX</option>
+                  <option value="Conversão">Conversão</option>
+                  <option value="Engajamento">Engajamento</option>
+                </select>
+
+                <select id="filter-camp-status" class="filter-select" onchange="filterCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">
+                  <option value="Todos">Status (Todos)</option>
+                  <option value="Ativo">Ativo</option>
+                  <option value="Pausado">Pausado</option>
+                </select>
+              </div>
+            </header>
+
+            <!-- Tabela Scrollable -->
+            <div class="table-wrapper" style="max-height: 400px; overflow-y: auto;">
+              <table class="custom-table">
+                <thead>
+                  <tr>
+                    <th style="width: 40px; padding: 12px 10px;"><input type="checkbox" id="c-campaign-select-all" onchange="toggleSelectAllCampaigns(this.checked)"></th>
+                    <th>Campanha</th>
+                    <th>Plataforma</th>
+                    <th>Investimento</th>
+                    <th>Impressões</th>
+                    <th>Cliques</th>
+                    <th>CTR</th>
+                    <th>CPC</th>
+                    <th>Conv.</th>
+                    <th>CPA</th>
+                  </tr>
+                </thead>
+                <tbody id="c-table-campaigns">
+                  <!-- Gerado dinamicamente via JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+
+        <!-- Evolução Comercial -->
+        <section class="table-card">
+          <h2 class="section-heading">Evolução comercial</h2>
+          <div id="c-evolution-list" style="margin-top: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+            <!-- JS -->
+          </div>
+        </section>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA 4: ANÁLISE DE CONVERSÃO (DREX)        -->
+      <!-- ========================================== -->
+      <div id="view-dashboard-conversao" style="display: none;">
+        <!-- Breadcrumb -->
+        <div class="breadcrumb-container" style="padding: 16px 0 8px 0; font-size: 11px; color: var(--text-secondary); display: flex; gap: 6px; align-items: center;">
+          <span>Dashboard</span>
+          <span style="color: var(--text-muted);">&gt;</span>
+          <span style="cursor: pointer;" onclick="selectClient('Drex Imóveis')">Drex Imóveis</span>
+          <span style="color: var(--text-muted);">&gt;</span>
+          <span style="color: var(--text-primary); font-weight: 500;">Conversão</span>
+        </div>
+
+        <!-- Barra de filtros -->
+        <div class="filters-bar-conversao" style="display: flex; gap: 12px; align-items: center; padding: 12px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); margin-bottom: 16px;">
+          <!-- Plataforma Select -->
+          <div class="filter-item-wrapper" style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 11px; color: var(--text-secondary);">Plataforma</span>
+            <select id="conv-filter-platform" class="filter-select" style="font-size: 11px; height: 28px; padding: 0 24px 0 10px; background-color: var(--bg-app);" onchange="updateConversaoData()">
+              <option value="Todas">Todas</option>
+              <option value="Google Ads">Google Ads</option>
+              <option value="Meta Ads">Meta Ads</option>
+              <option value="LinkedIn Ads">LinkedIn Ads</option>
+            </select>
+          </div>
+
+          <!-- Campanhas Multi-select Dropdown -->
+          <div class="filter-item-wrapper" style="display: flex; align-items: center; gap: 8px; position: relative;">
+            <span style="font-size: 11px; color: var(--text-secondary);">Campanhas</span>
+            <button id="conv-filter-campaigns-btn" class="filter-select" style="font-size: 11px; height: 28px; padding: 0 12px; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); text-align: left; cursor: pointer; min-width: 160px; display: flex; align-items: center; justify-content: space-between;" onclick="toggleConvCampaignsDropdown(event)">
+              <span id="conv-campaigns-btn-text">2 campanhas selecionadas</span>
+              <span style="font-size: 8px; margin-left: 6px; color: var(--text-muted);">▼</span>
+            </button>
+            
+            <!-- Campaigns Dropdown Overlay -->
+            <div id="conv-campaigns-dropdown" class="campaigns-dropdown-box" style="display: none; position: absolute; top: 32px; left: 70px; z-index: 100; width: 320px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.5); padding: 12px; display: flex; flex-direction: column; gap: 8px;">
+              <input type="text" id="conv-campaigns-search" placeholder="Buscar campanha..." class="filter-select" style="width: 100%; height: 28px; font-size: 11px; padding: 4px 8px; background-color: var(--bg-app);" oninput="filterConvCampaignsDropdown()">
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-secondary); padding: 2px 4px;">
+                <span style="cursor: pointer;" class="hover-white-text" onclick="selectAllConvCampaigns()">Selecionar todas</span>
+                <span style="cursor: pointer;" class="hover-white-text" onclick="clearAllConvCampaigns()">Limpar</span>
+              </div>
+              <div id="conv-campaigns-list-container" style="max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin: 4px 0;">
+                <!-- Filled via JS -->
+              </div>
+              <button class="pink-btn" style="height: 26px; font-size: 11px; align-self: flex-end; padding: 0 16px;" onclick="applyConvCampaignsFilter(event)">Aplicar</button>
+            </div>
+          </div>
+
+          <!-- Período Select Customizado -->
+          <div class="filter-item-wrapper" style="display: flex; align-items: center; gap: 8px; position: relative;">
+            <span style="font-size: 11px; color: var(--text-secondary);">Período</span>
+            <button id="conv-filter-period-btn" class="filter-select" style="font-size: 11px; height: 28px; padding: 0 12px; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); text-align: left; cursor: pointer; min-width: 155px; display: flex; align-items: center; justify-content: space-between;" onclick="togglePeriodDropdown('conv', event)">
+              <span id="conv-period-btn-text">01/05/2025 - 31/05/2025</span>
+              <span style="font-size: 8px; margin-left: 6px; color: var(--text-muted);">▼</span>
+            </button>
+            
+            <!-- Date Picker Dropdown Overlay -->
+            <div id="conv-period-dropdown" class="period-dropdown-box" style="display: none; position: absolute; top: 32px; right: 0; z-index: 100; width: 300px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.5); padding: 16px; flex-direction: column; gap: 12px;">
+              
+              <!-- Tabs / Options -->
+              <div class="calendar-presets" style="display: flex; flex-wrap: wrap; gap: 6px; border-bottom: 1px solid var(--divider-color); padding-bottom: 10px; margin-bottom: 4px;">
+                <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('conv', 7)">7D</span>
+                <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('conv', 14)">14D</span>
+                <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('conv', 30)">30D</span>
+                <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('conv', 180)">6M</span>
+                <span class="quick-filter-tag" style="font-size: 9px; background-color: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 12px; padding: 3px 8px; color: var(--text-secondary); cursor: pointer; user-select: none;" onclick="setPeriodPreset('conv', 'all')">Todo período</span>
+              </div>
+              
+              <!-- Inputs de início e fim -->
+              <div style="display: flex; align-items: center; gap: 8px; justify-content: space-between;">
+                <!-- Data Início -->
+                <div style="position: relative; display: flex; align-items: center; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; width: 120px;">
+                  <span style="font-size: 11px; margin-right: 6px; color: var(--text-muted);">🗓️</span>
+                  <input type="text" id="conv-period-start" value="01/05/2025" style="background: transparent; border: none; color: var(--text-primary); font-size: 11px; width: 100%; outline: none;" onchange="onPeriodInputChange('conv')">
+                </div>
+                
+                <span style="color: var(--text-muted); font-size: 11px;">—</span>
+                
+                <!-- Data Fim -->
+                <div style="position: relative; display: flex; align-items: center; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 8px; width: 120px; border-color: #a1a1aa;">
+                  <span style="font-size: 11px; margin-right: 6px; color: #a1a1aa;">🗓️</span>
+                  <input type="text" id="conv-period-end" value="31/05/2025" style="background: transparent; border: none; color: var(--text-primary); font-size: 11px; width: 100%; outline: none;" onchange="onPeriodInputChange('conv')">
+                </div>
+              </div>
+
+              <!-- Calendário Header -->
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px;">
+                <span style="cursor: pointer; color: #a1a1aa; font-size: 12px; font-weight: bold; padding: 0 4px;" onclick="prevCalendarMonth('conv')">&lt;</span>
+                <span id="conv-calendar-month-year" style="font-size: 11px; font-weight: bold; color: var(--text-primary);">Maio 2025</span>
+                <span style="cursor: pointer; color: #a1a1aa; font-size: 12px; font-weight: bold; padding: 0 4px;" onclick="nextCalendarMonth('conv')">&gt;</span>
+              </div>
+
+              <!-- Dias da Semana -->
+              <div style="display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; gap: 4px; font-size: 9px; color: var(--text-muted); font-weight: bold; margin-top: 4px;">
+                <span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span>
+              </div>
+
+              <!-- Grid de Dias -->
+              <div id="conv-calendar-days-grid" style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; font-size: 10px; margin-top: 2px;">
+                <!-- Carregado dinamicamente -->
+              </div>
+
+              <!-- Botão Aplicar -->
+              <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
+                <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 16px;" onclick="applyPeriodFilter('conv', event)">Aplicar</button>
+              </div>
+              
+            </div>
+          </div>
+        </div>
+
+        <!-- Header do Cliente -->
+        <header class="header-wrapper" style="padding: 16px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <h1 class="header-welcome" id="conv-c-welcome" style="font-size: 20px; font-weight: 700; margin-bottom: 4px;">Drex Imóveis</h1>
+            <span class="header-meta" id="conv-c-meta" style="font-size: 11px;">Conversão &middot; Maio 2025</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <span class="table-badge healthy" id="conv-c-status-badge" style="font-size: 12px; padding: 6px 14px;">Saudável</span>
+            <div class="header-controls">
+              <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+              <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+              <div class="header-avatar">FG</div>
+            </div>
+          </div>
+        </header>
+
+        <!-- Bloco Principal - Análise de Conversão -->
+        <section class="table-card" style="padding: 0; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); background-color: var(--bg-card); margin-bottom: 24px;">
+          <!-- Top Header inside the Card -->
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--divider-color);">
+            <h2 style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0;">ANÁLISE DE CONVERSÃO</h2>
+            <div style="position: relative;">
+              <span id="conv-menu-trigger" style="cursor: pointer; color: var(--text-secondary); font-size: 16px; padding: 4px 8px; display: inline-block; user-select: none;" onclick="toggleConvMenu(event)">⋮</span>
+              
+              <!-- Three-point Dropdown Menu Overlay -->
+              <div id="conv-three-point-dropdown" style="display: none; position: absolute; top: 24px; right: 0; z-index: 120; width: 180px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); box-shadow: 0 8px 20px rgba(0,0,0,0.5); padding: 4px 0; flex-direction: column; text-align: left;">
+                <span class="dropdown-item" style="font-size: 11px; padding: 8px 16px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openEstruturaModal(event)">Editar estrutura da análise</span>
+                <span class="dropdown-item" style="font-size: 11px; padding: 8px 16px; color: var(--text-secondary); cursor: pointer; display: block;" onclick="openMetasModal(event)">Editar metas</span>
+                <span class="dropdown-item" style="font-size: 11px; padding: 8px 16px; color: var(--text-secondary); cursor: pointer; display: block;" onclick="addNewConvRow(event)">Adicionar linha</span>
+                <span class="dropdown-item" style="font-size: 11px; padding: 8px 16px; color: var(--text-secondary); cursor: pointer; display: block;" onclick="showToast('Configuração salva como modelo!'); toggleConvMenu(event);">Salvar como modelo</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Matriz em Linhas (Preenchido dinamicamente) -->
+          <div class="analysis-matrix-container" id="conversao-matrix-container" style="display: flex; flex-direction: column;">
+            <!-- JS -->
+          </div>
+
+          <!-- Bottom Button "+ Adicionar linha de métricas" -->
+          <div style="display: flex; justify-content: center; align-items: center; padding: 16px; border-top: 1px solid var(--divider-color);">
+            <button style="background: transparent; border: none; font-family: var(--font-family-body); font-size: 11px; font-weight: 600; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 6px;" onclick="addNewConvRow(event)">
+              <span>+</span> Adicionar linha de métricas
+            </button>
+          </div>
+        </section>
+
+        <!-- Campanhas Filtradas (Recolhido por padrão) -->
+        <section class="table-card" style="padding: 12px 20px; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); background-color: var(--bg-card); display: flex; justify-content: space-between; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="checkbox" checked style="accent-color: var(--color-green); cursor: pointer;">
+            <span style="font-size: 12px; color: var(--text-primary); font-weight: 500;">Campanhas filtradas</span>
+            <span style="font-size: 10px; background-color: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 10px; color: var(--text-secondary);" id="conv-camp-badge">4 campanhas</span>
+          </div>
+          <div>
+            <a href="#" style="font-size: 11px; color: var(--text-secondary); text-decoration: none;" onclick="event.preventDefault(); alert('Visualização detalhada das campanhas em desenvolvimento.');">Ver detalhes</a>
+          </div>
+        </section>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA 3: COLABORADORES                     -->
+      <!-- ========================================== -->
+      <div id="view-colaboradores" style="display: none;">
+        <header class="header-wrapper">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Colaboradores</h1>
+            <span class="header-meta">Gerencie a equipe da agência</span>
+          </div>
+          
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div class="filters-container" style="margin-bottom: 0;">
+              <input type="text" id="search-colaborador" class="filter-select" placeholder="Buscar colaborador..." oninput="filterColaboradores(this.value)" style="width: 200px; height: 36px; padding: 8px 14px; font-size: 12px;">
+              <button class="pink-btn" onclick="openColaboradorModal()">+ Novo Colaborador</button>
+            </div>
+            <div class="header-controls">
+              <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+              <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+              <div class="header-avatar">FG</div>
+            </div>
+          </div>
+        </header>
+
+        <div class="colaboradores-grid" id="colaboradores-cards-grid">
+          <!-- Cards gerados via JS -->
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA 4: RELATÓRIOS                        -->
+      <!-- ========================================== -->
+      <div id="view-relatorios" style="display: none;">
+        <header class="header-wrapper">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Relatórios</h1>
+            <span class="header-meta">Configure e exporte relatórios de performance de seus clientes</span>
+          </div>
+          <!-- Header Controls -->
+          <div class="header-controls">
+            <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+            <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+            <div class="header-avatar">FG</div>
+          </div>
+        </header>
+
+        <div class="reports-grid">
+          <!-- COLUNA ESQUERDA: CONFIGURAÇÕES -->
+          <div class="reports-config-col" style="display: flex; flex-direction: column; gap: 20px;">
+            
+            <!-- BLOCO 1: FORMATO DE EXPORTAÇÃO -->
+            <div class="report-card">
+              <h3 class="report-section-title">1. Formato de exportação</h3>
+              <div class="format-selector-grid">
+                <div class="format-card active" onclick="selectReportFormat('PDF')" id="format-pdf">
+                  <div class="format-icon">📄</div>
+                  <div class="format-name">PDF</div>
+                  <div class="format-desc">Relatório visual para apresentação</div>
+                </div>
+                <div class="format-card" onclick="selectReportFormat('EXCEL')" id="format-excel">
+                  <div class="format-icon">📊</div>
+                  <div class="format-name">Excel</div>
+                  <div class="format-desc">Base estruturada para análise</div>
+                </div>
+                <div class="format-card" onclick="selectReportFormat('CSV')" id="format-csv">
+                  <div class="format-icon">📝</div>
+                  <div class="format-name">CSV</div>
+                  <div class="format-desc">Arquivo simples para integrações</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- BLOCO 2: TIPO DE RELATÓRIO -->
+            <div class="report-card">
+              <h3 class="report-section-title">2. Tipo de relatório</h3>
+              <div class="type-selector-grid">
+                <div class="type-card active" onclick="selectReportType('Consolidado da agência')" id="type-consolidado">
+                  <div class="type-title">Consolidado da agência</div>
+                </div>
+                <div class="type-card" onclick="selectReportType('Performance Ads')" id="type-perf-ads">
+                  <div class="type-title">Performance Ads</div>
+                </div>
+                <div class="type-card" onclick="selectReportType('Cliente específico')" id="type-cliente">
+                  <div class="type-title">Cliente específico</div>
+                </div>
+                <div class="type-card" onclick="selectReportType('Campanhas')" id="type-campanhas">
+                  <div class="type-title">Campanhas</div>
+                </div>
+                <div class="type-card" onclick="selectReportType('Funil comercial')" id="type-funil">
+                  <div class="type-title">Funil comercial</div>
+                </div>
+                <div class="type-card" onclick="selectReportType('Origem dos leads')" id="type-origem">
+                  <div class="type-title">Origem dos leads</div>
+                </div>
+                <div class="type-card" onclick="selectReportType('Motivos de perda')" id="type-perda">
+                  <div class="type-title">Motivos de perda</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- BLOCO 3: FILTROS DO RELATÓRIO -->
+            <div class="report-card">
+              <h3 class="report-section-title">3. Filtros do relatório</h3>
+              <div class="filters-grid-form">
+                
+                <!-- Cliente -->
+                <div class="form-group-report">
+                  <label class="report-label">Cliente</label>
+                  <select class="report-select" id="report-filter-client" onchange="populateReportCampaigns(); updateReportPreview();">
+                    <option value="Todos os clientes">Todos os clientes</option>
+                    <option value="Drex Imóveis">Drex Imóveis</option>
+                    <option value="Orion Tech">Orion Tech</option>
+                    <option value="Lumera Saúde">Lumera Saúde</option>
+                    <option value="Volks B2B">Volks B2B</option>
+                    <option value="Nexa Edu">Nexa Edu</option>
+                    <option value="AgroVale">AgroVale</option>
+                  </select>
+                </div>
+
+                <!-- Período -->
+                <div class="form-group-report">
+                  <label class="report-label">Período</label>
+                  <select class="report-select" id="report-filter-period" onchange="togglePeriodDates(); updateReportPreview();">
+                    <option value="Mês atual">Mês atual</option>
+                    <option value="Últimos 7 dias">Últimos 7 dias</option>
+                    <option value="Últimos 30 dias">Últimos 30 dias</option>
+                    <option value="Trimestre">Trimestre</option>
+                    <option value="Personalizado">Personalizado</option>
+                  </select>
+                </div>
+
+                <!-- Custom Period Dates -->
+                <div class="form-group-report span-2" id="report-date-inputs" style="display: none; grid-template-columns: 1fr 1fr; gap: 12px;">
+                  <div>
+                    <label class="report-label">Data Inicial</label>
+                    <input type="date" class="report-input-date" id="report-start-date" onchange="updateReportPreview()">
+                  </div>
+                  <div>
+                    <label class="report-label">Data Final</label>
+                    <input type="date" class="report-input-date" id="report-end-date" onchange="updateReportPreview()">
+                  </div>
+                </div>
+
+                <!-- Plataforma -->
+                <div class="form-group-report">
+                  <label class="report-label">Plataforma</label>
+                  <select class="report-select" id="report-filter-platform" onchange="updateReportPreview()">
+                    <option value="Todas">Todas</option>
+                    <option value="Google Ads">Google Ads</option>
+                    <option value="Meta Ads">Meta Ads</option>
+                    <option value="LinkedIn Ads">LinkedIn Ads</option>
+                  </select>
+                </div>
+
+                <!-- Objetivo de campanha -->
+                <div class="form-group-report">
+                  <label class="report-label">Objetivo de Campanha</label>
+                  <select class="report-select" id="report-filter-objective" onchange="updateReportPreview()">
+                    <option value="Todos">Todos</option>
+                    <option value="VideoView">VideoView</option>
+                    <option value="Conversão">Conversão</option>
+                    <option value="Captação WhatsApp">Captação WhatsApp</option>
+                    <option value="Captação FB Leads">Captação FB Leads</option>
+                    <option value="Pesquisa">Pesquisa</option>
+                    <option value="Vendas">Vendas</option>
+                    <option value="Download de aplicativo">Download de aplicativo</option>
+                  </select>
+                </div>
+
+                <!-- Status do Cliente -->
+                <div class="form-group-report">
+                  <label class="report-label">Status do Cliente</label>
+                  <select class="report-select" id="report-filter-status" onchange="updateReportPreview()">
+                    <option value="Todos">Todos</option>
+                    <option value="Saudável">Saudável</option>
+                    <option value="Atenção">Atenção</option>
+                    <option value="Crítico">Crítico</option>
+                  </select>
+                </div>
+
+                <!-- Campanhas (Multi-select dropdown) -->
+                <div class="form-group-report" style="position: relative;">
+                  <label class="report-label">Campanhas</label>
+                  <div class="campaign-multiselect-trigger" id="campaign-multiselect-trigger" onclick="toggleCampaignSelectDropdown()">
+                    <span id="selected-campaigns-count">Todas as campanhas</span>
+                    <span class="chevron-down">▼</span>
+                  </div>
+                  <!-- Multi-select Dropdown Panel -->
+                  <div class="campaign-multiselect-dropdown" id="campaign-multiselect-dropdown" style="display: none;">
+                    <div class="multiselect-search-wrapper">
+                      <input type="text" id="multiselect-search-input" placeholder="Buscar campanha..." oninput="filterCampaignList(this.value)">
+                    </div>
+                    <div class="multiselect-list" id="multiselect-list-container">
+                      <!-- Populated via JS -->
+                    </div>
+                    <div class="multiselect-footer">
+                      <button class="multiselect-btn apply" onclick="applyCampaignSelection()">Aplicar</button>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+
+          </div>
+
+          <!-- COLUNA DIREITA: PREVIEW E AÇÕES (STICKY) -->
+          <div class="reports-preview-col" style="position: sticky; top: 24px; display: flex; flex-direction: column; gap: 20px;">
+            
+            <!-- PREVIEW CARD -->
+            <div class="report-card preview-card-style">
+              <h3 class="report-section-title">Prévia do relatório</h3>
+              
+              <div class="preview-details-wrapper">
+                <div class="preview-item">
+                  <span class="preview-lbl">Formato:</span>
+                  <span class="preview-val" id="preview-val-format">PDF</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Tipo de Relatório:</span>
+                  <span class="preview-val" id="preview-val-type">Consolidado da agência</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Cliente:</span>
+                  <span class="preview-val" id="preview-val-client">Todos os clientes</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Período:</span>
+                  <span class="preview-val" id="preview-val-period">Mês atual</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Plataforma:</span>
+                  <span class="preview-val" id="preview-val-platform">Todas</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Objetivo:</span>
+                  <span class="preview-val" id="preview-val-objective">Todos</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Campanhas:</span>
+                  <span class="preview-val" id="preview-val-campaigns">Todas</span>
+                </div>
+                <div class="preview-item">
+                  <span class="preview-lbl">Status:</span>
+                  <span class="preview-val" id="preview-val-status">Todos</span>
+                </div>
+              </div>
+
+              <div class="preview-context-msg" id="preview-context-msg">
+                O relatório incluirá métricas de investimento, impressões, cliques, conversões, CPA, CTR e campanhas filtradas.
+              </div>
+            </div>
+
+            <!-- AÇÕES -->
+            <div class="report-actions-container" style="display: flex; flex-direction: column; gap: 12px;">
+              <button class="pink-btn" style="width: 100%; height: 44px; font-size: 14px;" onclick="generateReportMock()">Gerar relatório</button>
+              <div style="display: flex; gap: 12px;">
+                <button class="filter-btn" style="flex: 1; height: 38px; font-size: 12px;" onclick="saveReportConfigMock()">Salvar configuração</button>
+                <button class="filter-btn" style="flex: 1; height: 38px; font-size: 12px;" onclick="clearReportFilters()">Limpar filtros</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA 5: RADAR DE EMPRESAS                 -->
+      <!-- ========================================== -->
+      <div id="view-comercial-radar" style="display: none;">
+        <header class="header-wrapper" style="margin-bottom: 20px;">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Radar de Empresas</h1>
+            <span class="header-meta">Pesquise empresas e extraia dados integrados para prospecção ativa</span>
+          </div>
+          <div class="header-controls">
+            <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+            <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+            <div class="header-avatar">FG</div>
+          </div>
+        </header>
+
+        <!-- Search Bar Header (Matching Mockup) -->
+        <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 16px; margin-bottom: 20px; display: flex; gap: 12px; align-items: center;">
+          <div style="position: relative; flex-grow: 1;">
+            <input type="text" id="radar-search-query" placeholder='Ex: "imobiliárias em Campinas", "clínicas em Guarulhos", "APDR drag race"...' style="width: 100%; height: 44px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm); padding: 0 16px; font-size: 13px; font-family: var(--font-family-body);" onkeydown="if(event.key === 'Enter') executeRadarSearch();">
+          </div>
+          <button class="pink-btn" style="height: 44px; padding: 0 24px; font-size: 13px; font-weight: 600;" onclick="executeRadarSearch()">Buscar empresas 🔍</button>
+        </div>
+
+        <!-- Empty State Placeholder (Visible by default) -->
+        <div id="radar-empty-state" style="background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; margin-bottom: 20px;">
+          <span style="font-size: 32px; margin-bottom: 16px; opacity: 0.6;">📡</span>
+          <h3 style="font-size: 14px; font-weight: 700; color: var(--text-primary); font-family: var(--font-family-title); margin-bottom: 6px;">Digite uma empresa, nicho ou cidade para começar.</h3>
+          <p style="font-size: 11px; color: var(--text-secondary); max-width: 420px; line-height: 1.5;">Os leads encontrados poderão ser importados para a etapa "Em abordagem" no Pipeline comercial.</p>
+        </div>
+
+        <!-- Loading state (Hidden by default) -->
+        <div id="radar-loading-state" style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); padding: 60px 20px; text-align: center; display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; margin-bottom: 20px;">
+          <div class="loading-spinner" style="border: 3px solid rgba(255,255,255,0.05); border-radius: 50%; border-top: 3px solid #8b5cf6; width: 32px; height: 32px; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
+          <h3 style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Integrando com Google Maps...</h3>
+          <p style="font-size: 10px; color: var(--text-secondary);">Buscando locais e qualificando contatos comerciais...</p>
+        </div>
+
+        <!-- Results Table (Hidden by default, populated dynamically) -->
+        <div id="radar-results-card" class="table-card" style="display: none; margin-bottom: 20px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <span id="radar-found-count" style="font-size: 12px; font-weight: 600; color: var(--text-primary);">3 empresa(s) encontradas</span>
+              <span style="color: var(--text-muted); font-size: 11px;">|</span>
+              <span id="radar-selected-count" style="font-size: 11px; color: var(--text-secondary);">0 selecionada(s) de 3 disponíveis</span>
+            </div>
+            
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <!-- Responsavel -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 10px; color: var(--text-secondary);">Responsável:</span>
+                <select id="radar-assign-owner" style="height: 32px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm); padding: 0 8px; font-size: 11px; font-family: var(--font-family-body); outline: none; cursor: pointer;">
+                  <option value="auto">Automático</option>
+                  <option value="felippe.alves">Felippe Alves</option>
+                </select>
+              </div>
+              
+              <!-- Import button -->
+              <button id="radar-import-btn" class="pink-btn" style="height: 32px; padding: 0 16px; font-size: 11px; font-weight: 600; opacity: 0.4; pointer-events: none; transition: var(--transition-fast);" onclick="importSelectedRadarLeads()">Importar lead(s)</button>
+            </div>
+          </div>
+          
+          <div class="table-wrapper">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th style="width: 45px; padding: 12px 16px;"><input type="checkbox" id="radar-check-all" onclick="toggleAllRadarChecks(this.checked)" style="cursor: pointer; width: 14px; height: 14px;"></th>
+                  <th>Empresa</th>
+                  <th>Telefone</th>
+                  <th>Endereço</th>
+                  <th>Avaliação</th>
+                  <th>Links</th>
+                  <th style="text-align: right; padding-right: 20px;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="radar-search-results-tbody">
+                <!-- Rendered dynamically -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA 6: PIPELINE COMERCIAL                -->
+      <!-- ========================================== -->
+      <div id="view-comercial-pipeline" style="display: none;">
+        <header class="header-wrapper" style="margin-bottom: 16px;">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Pipeline Comercial</h1>
+            <span class="header-meta">Gerenciamento de leads, oportunidades e funil de vendas</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px;">
+            <div style="display: flex; gap: 12px;">
+              <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 6px 12px; display: flex; flex-direction: column; justify-content: center; min-width: 100px;">
+                <span style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Total Oportunidades</span>
+                <span id="pipeline-total-ops" style="font-size: 13px; font-weight: 700; color: var(--text-primary); margin-top: 1px;">0 ops</span>
+              </div>
+              <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 6px 12px; display: flex; flex-direction: column; justify-content: center; min-width: 140px;">
+                <span style="font-size: 8px; color: var(--text-secondary); text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Valor Total Funil</span>
+                <span id="pipeline-total-val" style="font-size: 13px; font-weight: 700; color: var(--color-green); margin-top: 1px;">R$ 0,00</span>
+              </div>
+            </div>
+            
+            <div class="header-controls">
+              <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+              <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+              <div class="header-avatar">FG</div>
+            </div>
+          </div>
+        </header>
+
+        <!-- KANBAN BOARD CONTAINER -->
+        <div class="kanban-board-wrapper" style="overflow-x: auto; width: 100%; margin-bottom: 24px;">
+          <div id="pipeline-kanban-board" class="kanban-board" style="display: flex; gap: 16px; padding-bottom: 12px; align-items: flex-start; min-height: 480px; width: max-content; padding-right: 20px;">
+            <!-- Rendered dynamically via JS -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA 7: BASE DE CONTATOS                  -->
+      <!-- ========================================== -->
+      <div id="view-comercial-contatos" style="display: none;">
+        <header class="header-wrapper" style="margin-bottom: 20px;">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Base de Contatos & Leads</h1>
+            <span class="header-meta">Banco de dados consolidado com todos os contatos do pipeline comercial</span>
+          </div>
+          <div class="header-controls">
+            <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+            <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+            <div class="header-avatar">FG</div>
+          </div>
+        </header>
+
+        <!-- CONTACTS TABLE DATABASE -->
+        <div class="table-card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <div>
+              <h3 style="font-size: 14px; font-weight: 700; color: var(--text-primary); font-family: var(--font-family-title);">BASE DE CONTATOS & LEADS</h3>
+              <p style="font-size: 11px; color: var(--text-secondary); margin-top: 2px;">Banco de dados consolidado com todos os contatos do pipeline comercial</p>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="text" placeholder="Buscar lead, e-mail, cargo..." id="contacts-search" oninput="filterContactsList(this.value)" style="height: 32px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm); padding: 0 12px; font-size: 11px; font-family: var(--font-family-body); width: 200px;">
+              <select id="contacts-filter-stage" onchange="filterContactsList(document.getElementById('contacts-search').value)" style="height: 32px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm); padding: 0 8px; font-size: 11px; font-family: var(--font-family-body); outline: none; cursor: pointer;">
+                <option value="Todos">Todos os status</option>
+              </select>
+              <button class="filter-btn" style="height: 32px; padding: 0 12px; font-size: 11px;" onclick="exportContactsCSV()">Exportar CSV 📥</button>
+            </div>
+          </div>
+          
+          <div class="table-wrapper">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Lead / Empresa</th>
+                  <th>Status</th>
+                  <th>Telefone</th>
+                  <th>E-mail</th>
+                  <th>Responsável</th>
+                  <th>Cargo</th>
+                  <th>B.U (Business Unit)</th>
+                  <th style="text-align: right; padding-right: 16px;">Valor</th>
+                </tr>
+              </thead>
+              <tbody id="contacts-table-body">
+                <!-- Populated via Javascript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- SIDE DRAWER: DETALHES DO CONTATO -->
+    <div id="lead-details-drawer" class="details-drawer" style="display: none;">
+      <div class="drawer-overlay" onclick="closeLeadDetailsDrawer()"></div>
+      <div class="drawer-content">
+        <div class="drawer-header">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span style="font-size: 16px; color: var(--text-secondary);">👤</span>
+            <h2 class="drawer-title" style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; color: var(--text-primary); margin: 0; text-transform: uppercase; letter-spacing: 0.5px;">Detalhes do Contato</h2>
+          </div>
+          <button class="drawer-close-btn" onclick="closeLeadDetailsDrawer()">&times;</button>
+        </div>
+        
+        <div class="drawer-body">
+          <!-- Lead Main Summary -->
+          <div class="drawer-summary-card" style="background-color: rgba(255,255,255,0.015); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 12px; margin-bottom: 20px;">
+            <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; font-weight: bold; letter-spacing: 0.5px;">Empresa / Oportunidade</div>
+            <input type="text" id="edit-lead-name" style="background: transparent; border: none; border-bottom: 1px dashed var(--border-color); font-size: 16px; font-weight: 700; color: var(--text-primary); font-family: var(--font-family-title); width: 100%; margin-top: 4px; padding-bottom: 4px;" placeholder="Nome da empresa..." onchange="saveLeadDetailField('name', this.value)">
+            
+            <div style="display: flex; gap: 8px; margin-top: 10px; align-items: center;">
+              <span style="font-size: 10px; color: var(--text-secondary);">Setor/Tag:</span>
+              <input type="text" id="edit-lead-tag" style="background: rgba(255,255,255,0.04); border: 1px solid var(--border-color); border-radius: 4px; font-size: 10px; padding: 2px 8px; color: var(--text-secondary); width: 120px;" placeholder="Ex: Saúde" onchange="saveLeadDetailField('tag', this.value)">
+            </div>
+          </div>
+
+          <!-- 2 Column Fields Layout (Matching Screenshot) -->
+          <div class="drawer-fields-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; text-align: left; margin-bottom: 10px;">
+            
+            <!-- Telefone -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Telefone</label>
+              <input type="text" id="edit-lead-phone" class="drawer-field-input" placeholder="+55 (11) 99999-9999" onchange="saveLeadDetailField('phone', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- E-mail -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">E-mail</label>
+              <input type="email" id="edit-lead-email" class="drawer-field-input" placeholder="email@exemplo.com" onchange="saveLeadDetailField('email', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- Cargo -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Cargo</label>
+              <input type="text" id="edit-lead-role" class="drawer-field-input" placeholder="Ex: Coordenador" onchange="saveLeadDetailField('role', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- B.U (Business Unit) -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">B.U (Business Unit)</label>
+              <input type="text" id="edit-lead-bu" class="drawer-field-input" placeholder="Ex: Promotor" onchange="saveLeadDetailField('bu', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- Valor Potencial -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Valor Potencial</label>
+              <input type="number" id="edit-lead-value" class="drawer-field-input" placeholder="0.00" onchange="saveLeadDetailField('potentialValue', parseFloat(this.value) || 0)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-weight: bold; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- Agendamento / Negociação -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Agendamento / Negociação</label>
+              <input type="text" id="edit-lead-negoc" class="drawer-field-input" placeholder="-" onchange="saveLeadDetailField('negotiation', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- Motivo de Descarte -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Motivo de Descarte</label>
+              <input type="text" id="edit-lead-loss" class="drawer-field-input" placeholder="-" onchange="saveLeadDetailField('lossReason', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+            
+            <!-- Data do Primeiro Contato -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Data do Primeiro Contato</label>
+              <input type="text" id="edit-lead-date" class="drawer-field-input" placeholder="DD/MM/AAAA" onchange="saveLeadDetailField('firstContactDate', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+
+            <!-- Canal de Origem -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Canal de Origem</label>
+              <input type="text" id="edit-lead-source" class="drawer-field-input" placeholder="Ex: Indicação" onchange="saveLeadDetailField('source', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+
+            <!-- Próxima Ação -->
+            <div class="drawer-field-group">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Próxima Ação / Tarefa</label>
+              <input type="text" id="edit-lead-next-action" class="drawer-field-input" placeholder="Ex: Enviar proposta amanhã" onchange="saveLeadDetailField('nextAction', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+            </div>
+
+            <!-- Etapa do Funil -->
+            <div class="drawer-field-group" style="grid-column: span 2;">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Etapa do Funil</label>
+              <select id="edit-lead-stage" onchange="saveLeadDetailField('stageId', this.value)" style="width: 100%; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; outline: none; cursor: pointer;">
+                <!-- Populated dynamically -->
+              </select>
+            </div>
+            
+            <!-- Responsável -->
+            <div class="drawer-field-group" style="grid-column: span 2; margin-top: 10px;">
+              <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Responsável</label>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div id="edit-lead-owner-avatar" style="width: 28px; height: 28px; border-radius: 50%; background-color: var(--color-purple); color: var(--text-white); font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; text-transform: uppercase;">
+                  FE
+                </div>
+                <select id="edit-lead-owner-select" onchange="changeLeadOwner(this.value)" style="flex-grow: 1; font-size: 11px; padding: 6px 8px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; outline: none; cursor: pointer;">
+                  <!-- Populated dynamically -->
+                </select>
+              </div>
+            </div>
+            
+          </div>
+        </div>
+        
+        <!-- Drawer Footer -->
+        <div class="drawer-footer" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--divider-color); display: flex; justify-content: space-between;">
+          <button class="filter-btn" onclick="deleteLeadFromDrawer()" style="background-color: var(--color-red-bg); border-color: var(--color-red-border); color: var(--color-red); font-size: 11px; padding: 8px 16px; height: 32px;">Excluir Lead 🗑️</button>
+          <button class="pink-btn" onclick="closeLeadDetailsDrawer()" style="font-size: 11px; padding: 0 24px; height: 32px;">Salvar & Fechar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMN SETTINGS POPOVER/MODAL -->
+    <div id="stage-settings-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.6); z-index: 10050; align-items: center; justify-content: center; backdrop-filter: blur(2px);">
+      <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); width: 340px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color); padding-bottom: 8px;">
+          <h3 style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: var(--text-primary); margin: 0; text-transform: uppercase;">Configurações da Etapa</h3>
+          <span style="cursor: pointer; color: var(--text-secondary); font-size: 18px;" onclick="closeStageSettingsModal()">&times;</span>
+        </div>
+        
+        <input type="hidden" id="settings-stage-id">
+        
+        <!-- Rename input -->
+        <div style="display: flex; flex-direction: column; gap: 4px; text-align: left;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Nome da Etapa</label>
+          <input type="text" id="settings-stage-name" class="filter-select" style="font-size: 11px; height: 32px; width: 100%; padding: 0 8px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm);">
+        </div>
+        
+        <!-- Color Picker -->
+        <div style="display: flex; flex-direction: column; gap: 6px; text-align: left;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Cor da Linha (Kanban)</label>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;" id="settings-color-palette">
+            <!-- Colors generated via JS -->
+          </div>
+        </div>
+        
+        <!-- Footer actions -->
+        <div style="display: flex; justify-content: space-between; border-top: 1px solid var(--divider-color); padding-top: 12px; margin-top: 4px;">
+          <button class="filter-btn" onclick="deleteStageFromSettings()" style="height: 28px; font-size: 10px; padding: 0 10px; border-color: var(--color-red-border); color: var(--color-red); background-color: var(--color-red-bg);">Excluir Etapa</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="filter-btn" onclick="closeStageSettingsModal()" style="height: 28px; font-size: 10px; padding: 0 12px;">Cancelar</button>
+            <button class="pink-btn" onclick="saveStageSettings()" style="height: 28px; font-size: 10px; padding: 0 16px;">Salvar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL NOVO COLABORADOR -->
+  <div id="colaborador-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="modal-title-text">Novo Colaborador</h3>
+        <button class="modal-close-btn" onclick="closeColaboradorModal()">&times;</button>
+      </div>
+      <form id="colaborador-form" onsubmit="saveColaborador(event)">
+        <input type="hidden" id="colab-id" value="">
+        <div class="form-group">
+          <label class="form-label" for="colab-name">Nome Completo</label>
+          <input type="text" id="colab-name" class="form-input" required placeholder="Ex: Caio Breno Carvalho de Freitas">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="colab-role">Cargo / Nível</label>
+          <select id="colab-role" class="form-select" required>
+            <option value="Admin">Admin</option>
+            <option value="Analista">Analista</option>
+            <option value="Vendedor">Vendedor</option>
+            <option value="Hunter">Hunter</option>
+            <option value="SDR">SDR</option>
+            <option value="Gestor(a)">Gestor(a)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="colab-email">E-mail</label>
+          <input type="email" id="colab-email" class="form-input" required placeholder="Ex: caio.freitas@superaholdings.com.br">
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="form-btn-secondary" onclick="closeColaboradorModal()">Cancelar</button>
+          <button type="submit" class="form-btn-primary">Salvar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- DROPDOWN VER TODOS OS CLIENTES -->
+  <div id="clientes-dropdown" class="clientes-dropdown" style="display: none;">
+    <div class="dropdown-search-wrapper">
+      <input type="text" id="clientes-search" class="dropdown-search-input" placeholder="Buscar cliente..." oninput="filterClientes(this.value)">
+    </div>
+    <div class="dropdown-list-container" id="clientes-dropdown-list">
+      <!-- Carregado dinamicamente -->
+    </div>
+    <div class="dropdown-footer">
+      <span class="dropdown-counter" id="clientes-counter">8 de 18 clientes</span>
+      <button class="dropdown-close-btn" onclick="toggleClientesDropdown(event, false)">Fechar</button>
+    </div>
+  </div>
+
+  <!-- PAINEL DO ASSISTENTE PRATA -->
+  <div id="assist-panel" class="assist-panel">
+    <div class="assist-header">
+      <div class="assist-header-left">
+        <h2 class="assist-title">Assistente PRATA</h2>
+        <p class="assist-subtitle">Pergunte sobre dados, resumos, análises ou próximos passos.</p>
+      </div>
+      <div class="assist-header-actions">
+        <button class="assist-action-btn" id="assist-expand-btn" onclick="toggleAssistExpand()" title="Expandir/Reduzir">⤢</button>
+        <button class="assist-action-btn" onclick="toggleAssist(false)" title="Fechar">&times;</button>
+      </div>
+    </div>
+
+    <!-- Sugestões Rápidas -->
+    <div class="assist-suggestions">
+      <button class="suggestion-tag" onclick="handleSuggestion('Resumir um cliente')">Resumir um cliente</button>
+      <button class="suggestion-tag" onclick="handleSuggestion('Mostrar principais alertas')">Mostrar principais alertas</button>
+      <button class="suggestion-tag" onclick="handleSuggestion('Gerar resumo para o cliente')">Gerar resumo para o cliente</button>
+      <button class="suggestion-tag" onclick="handleSuggestion('Comparar canais')">Comparar canais</button>
+      <button class="suggestion-tag" onclick="handleSuggestion('Explicar uma métrica')">Explicar uma métrica</button>
+      <button class="suggestion-tag" onclick="handleSuggestion('O que merece atenção?')">O que merece atenção?</button>
+    </div>
+
+    <!-- Área de Conversa -->
+    <div class="assist-messages-container" id="assist-messages-container">
+      <div class="assist-message assistant">
+        <div class="message-bubble">Olá, Felippe! Eu sou o Assistente PRATA. Posso te ajudar a analisar dados, resumir a situação de clientes, explicar métricas e sugerir próximos passos. O que você gostaria de saber hoje?</div>
+      </div>
+    </div>
+
+    <!-- Campo de Envio -->
+    <div class="assist-input-area">
+      <textarea id="assist-textarea" class="assist-textarea" placeholder="Pergunte ao PRATA..." rows="1" oninput="handleAssistInput(this)"></textarea>
+      <button id="assist-send-btn" class="assist-send-btn" disabled onclick="sendAssistMessage()">➔</button>
+    </div>
+  </div>
+
+  <!-- Modal de Configuração de Metas -->
+  <div id="metas-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.75); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); width: 480px; max-width: 90%; padding: 24px; box-shadow: 0 15px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color); padding-bottom: 12px;">
+        <h3 style="font-family: var(--font-family-title); font-size: 14px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0;">CONFIGURAR METAS</h3>
+        <span style="cursor: pointer; color: var(--text-secondary); font-size: 18px;" onclick="closeMetasModal()">&times;</span>
+      </div>
+      
+      <!-- Inputs de Metas -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; max-height: 360px; overflow-y: auto; padding-right: 4px; text-align: left;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Valor investido (R$)</label>
+          <input type="number" id="input-meta-invest" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Impressões</label>
+          <input type="number" id="input-meta-impress" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Cliques</label>
+          <input type="number" id="input-meta-clicks" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Page View</label>
+          <input type="number" id="input-meta-views" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Conversões</label>
+          <input type="number" id="input-meta-convs" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">CPM (R$)</label>
+          <input type="number" step="0.01" id="input-meta-cpm" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">CPC (R$)</label>
+          <input type="number" step="0.01" id="input-meta-cpc" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Custo / Page View (R$)</label>
+          <input type="number" step="0.01" id="input-meta-cppv" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Custo / Conversão (R$)</label>
+          <input type="number" step="0.01" id="input-meta-cpa" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">CTR (%)</label>
+          <input type="number" step="0.01" id="input-meta-ctr" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Taxa de Page View (%)</label>
+          <input type="number" step="0.1" id="input-meta-pvrate" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Taxa de Conversão (%)</label>
+          <input type="number" step="0.1" id="input-meta-convrate" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 4px; grid-column: span 2;">
+          <label style="font-size: 10px; color: var(--text-secondary);">Taxa de Compra (%)</label>
+          <input type="number" step="0.1" id="input-meta-buyerate" class="filter-select" style="font-size: 11px; height: 28px; width: 100%; padding: 0 8px; background-color: var(--bg-app);">
+        </div>
+      </div>
+      
+      <!-- Footer Ações -->
+      <div style="display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--divider-color); padding-top: 12px;">
+        <button class="filter-btn" style="height: 28px; font-size: 11px; padding: 0 16px;" onclick="closeMetasModal()">Cancelar</button>
+        <button class="pink-btn" style="height: 28px; font-size: 11px; padding: 0 16px;" onclick="saveMetasForm()">Salvar metas</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de Editar Estrutura da Análise -->
+  <div id="estrutura-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.75); z-index: 10000; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); width: 850px; max-width: 95%; height: 85vh; max-height: 700px; padding: 24px; box-shadow: 0 15px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 16px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color); padding-bottom: 12px; flex-shrink: 0;">
+        <h3 style="font-family: var(--font-family-title); font-size: 14px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0;">EDITAR ESTRUTURA DA ANÁLISE</h3>
+        <span style="cursor: pointer; color: var(--text-secondary); font-size: 18px;" onclick="closeEstruturaModal()">&times;</span>
+      </div>
+      
+      <!-- Listagem de Linhas para Edição -->
+      <div id="edit-rows-container" style="flex-grow: 1; overflow-y: auto; padding-right: 6px; display: flex; flex-direction: column; gap: 20px;">
+        <!-- JS irá renderizar as linhas de métricas aqui -->
+      </div>
+      
+      <!-- Rodapé / Ações do Modal -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--divider-color); padding-top: 16px; flex-shrink: 0;">
+        <button class="filter-btn" style="height: 32px; font-size: 11px; padding: 0 16px; font-weight: 600;" onclick="addNewRowToEdit()">+ Adicionar Linha</button>
+        <div style="display: flex; gap: 12px;">
+          <button class="filter-btn" style="height: 32px; font-size: 11px; padding: 0 16px; font-weight: 600;" onclick="closeEstruturaModal()">Cancelar</button>
+          <button class="pink-btn" style="height: 32px; font-size: 11px; padding: 0 16px; font-weight: 600;" onclick="saveEstruturaChanges()">Salvar alterações</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal do Catálogo de Métricas -->
+  <div id="catalogo-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.85); z-index: 10100; align-items: center; justify-content: center; backdrop-filter: blur(4px);">
+    <div style="background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); width: 640px; max-width: 90%; height: 80vh; max-height: 600px; padding: 20px; box-shadow: 0 15px 40px rgba(0,0,0,0.6); display: flex; flex-direction: column; gap: 14px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--divider-color); padding-bottom: 10px; flex-shrink: 0;">
+        <h3 style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0;">CATÁLOGO DE MÉTRICAS</h3>
+        <span style="cursor: pointer; color: var(--text-secondary); font-size: 18px;" onclick="closeCatalogoModal()">&times;</span>
+      </div>
+      
+      <!-- Barra de Busca -->
+      <div style="position: relative; flex-shrink: 0;">
+        <input type="text" id="catalogo-search-input" placeholder="Buscar métrica..." oninput="filterCatalogoList()" style="width: 100%; height: 36px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm); padding: 0 14px; font-size: 12px; font-family: var(--font-family-body);">
+      </div>
+      
+      <!-- Lista de Categorias / Métricas -->
+      <div id="catalogo-list-container" style="flex-grow: 1; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 16px;">
+        <!-- JS -->
+      </div>
+      
+      <!-- Rodapé do Catálogo -->
+      <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--divider-color); padding-top: 12px; flex-shrink: 0;">
+        <button class="pink-btn" style="height: 30px; font-size: 11px; padding: 0 14px; font-weight: 600;" onclick="createCustomMetricFromCatalog()">+ Criar métrica personalizada</button>
+        <button class="filter-btn" style="height: 30px; font-size: 11px; padding: 0 14px;" onclick="closeCatalogoModal()">Fechar</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js?v=52"></script>
+</body>
+</html>
