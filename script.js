@@ -252,18 +252,16 @@ async function refreshClientDetailedDataIfReal(clientName) {
     supabaseClient.from('leads_sales').select('*').eq('client_slug', slug)
   ]);
 
-  if ((!campaigns || campaigns.length === 0) && (!leadsRows || leadsRows.length === 0)) {
-    return;
-  }
-
+  // Sempre monta o dashboard a partir do que existir no banco (zerado se não
+  // houver nada ainda) — não usa mais o mock fictício como fallback.
   clientDetailedData[clientName] = buildClientDetailedDataFromReal(campaigns || [], leadsRows || []);
 }
 
 // Agrega dados reais de TODOS os clientes pro Dashboard Pai (agência). Se não
 // houver nenhum dado importado ainda, mantém agencyPeriodData mockado.
 async function refreshAgencyPeriodDataFromReal() {
-  const { data: campaigns } = await supabaseClient.from('campaign_metrics').select('*');
-  if (!campaigns || campaigns.length === 0) return;
+  const { data } = await supabaseClient.from('campaign_metrics').select('*');
+  const campaigns = data || [];
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -282,17 +280,18 @@ async function refreshAgencyPeriodDataFromReal() {
     const conv = clicks > 0 ? (convs / clicks) * 100 : 0;
     const cpa = convs > 0 ? invest / convs : 0;
     const roi = invest > 0 ? ((revenue - invest) / invest) * 100 : 0;
+    const trendLabel = rows.length > 0 ? '■ Dados importados' : '— Sem dados importados';
     return {
       investimento: formatCurrency(invest),
-      trendInvestimento: '■ Dados importados',
+      trendInvestimento: trendLabel,
       receita: formatCurrency(revenue),
-      trendReceita: '■ Dados importados',
+      trendReceita: trendLabel,
       conversao: `${conv.toFixed(1)}%`,
       cpl: formatCurrency(cpa),
-      trendCpl: '■ Estável',
+      trendCpl: rows.length > 0 ? '■ Estável' : '— Sem dados',
       cpa: formatCurrency(cpa),
       roi: `${Math.round(roi)}%`,
-      trendRoi: '■ Dados importados',
+      trendRoi: trendLabel,
       funnel: [formatNumber(impress), formatNumber(clicks), formatNumber(pageViews), formatNumber(convs)],
       funnelPct: [
         '100%',
@@ -307,7 +306,7 @@ async function refreshAgencyPeriodDataFromReal() {
   agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart));
   agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart));
 
-  usingRealAgencyData = true;
+  usingRealAgencyData = campaigns.length > 0;
 }
 
 // Base de Dados do Dashboard Pai (Agência) por Períodos
@@ -705,8 +704,49 @@ async function showDashboardPai() {
     await refreshAgencyPeriodDataFromReal();
   }
 
+  const headerCountEl = document.getElementById('header-client-count');
+  if (headerCountEl) headerCountEl.innerText = `${allClients.length} cliente${allClients.length === 1 ? '' : 's'} ativo${allClients.length === 1 ? '' : 's'}`;
+
+  renderAttentionCards();
+
   // Atualiza valores do Dashboard Pai com base no período atual
   updateDashboardPaiValues(agencyPeriodData[currentPeriod]);
+}
+
+// Mostra um card por cliente com status "attention"/"critical". Se não houver
+// nenhum cliente real nesse estado, esconde a seção inteira (nada de dado fictício).
+function renderAttentionCards() {
+  const section = document.getElementById('attention-section');
+  const grid = document.getElementById('attention-grid');
+  if (!section || !grid) return;
+
+  const flagged = allClients.filter(c => c.status === 'attention' || c.status === 'critical');
+
+  if (flagged.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  grid.innerHTML = '';
+
+  flagged.forEach(c => {
+    const isCritical = c.status === 'critical';
+    const card = document.createElement('div');
+    card.className = `attention-card ${isCritical ? 'critical-indicator' : 'attention-indicator'}`;
+    card.onclick = () => selectClient(c.name);
+    card.innerHTML = `
+      <div class="attention-card-header">
+        <span class="attention-client-name">${c.name}</span>
+        <span class="attention-badge ${isCritical ? 'critical' : 'attention'}">${isCritical ? 'Crítico' : 'Atenção'}</span>
+      </div>
+      <div class="attention-card-body">
+        <span class="attention-desc">${c.name} está com status "${isCritical ? 'Crítico' : 'Atenção'}".</span>
+        <span class="attention-impact">Revise os dados importados desse cliente para mais detalhes.</span>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
 }
 
 function formatNumber(valor) {

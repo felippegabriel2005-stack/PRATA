@@ -96,7 +96,7 @@
         <header class="header-wrapper">
           <div class="header-info-container">
             <h1 class="header-welcome">Bom dia, Felippe.</h1>
-            <span class="header-meta">18 clientes ativos &middot; <span id="current-period-text">All Time</span></span>
+            <span class="header-meta"><span id="header-client-count">0 clientes ativos</span> &middot; <span id="current-period-text">All Time</span></span>
           </div>
           
           <div style="display: flex; align-items: center; gap: 16px;">
@@ -262,56 +262,13 @@
         </div>
         
         <!-- BLOCO PRINCIPAL: O QUE PRECISA DA SUA ATENÇÃO HOJE -->
-        <section class="section-container">
+        <section class="section-container" id="attention-section">
           <div class="section-heading-wrapper">
             <h2 class="section-heading">O que precisa da sua atenção hoje</h2>
           </div>
-          
-          <div class="attention-grid">
-            <!-- Insight 1 (Crítico) -->
-            <div class="attention-card critical-indicator" onclick="selectClient('Volks B2B')">
-              <div class="attention-card-header">
-                <span class="attention-client-name">Volks B2B</span>
-                <span class="attention-badge critical">Crítico</span>
-              </div>
-              <div class="attention-card-body">
-                <span class="attention-desc">Volks B2B está abaixo do break-even financeiro.</span>
-                <span class="attention-impact">Impacto: ROAS de 1,9x nas últimas 3 semanas.</span>
-              </div>
-              <div class="attention-card-action">
-                <span class="action-prefix">Ação sugerida:</span>Revisar campanhas de Meta Ads e redistribuir verba para públicos validados.
-              </div>
-            </div>
-            
-            <!-- Insight 2 (Atenção) -->
-            <div class="attention-card attention-indicator" onclick="selectClient('Lumera Saúde')">
-              <div class="attention-card-header">
-                <span class="attention-client-name">Lumera Saúde</span>
-                <span class="attention-badge attention">Atenção</span>
-              </div>
-              <div class="attention-card-body">
-                <span class="attention-desc">Queda acentuada na taxa de qualificação de leads.</span>
-                <span class="attention-impact">Impacto: Qualificação caiu 22% nas últimas 3 semanas.</span>
-              </div>
-              <div class="attention-card-action">
-                <span class="action-prefix">Ação sugerida:</span>Revisar filtros de formulário e segmentações de topo de funil no Google Ads.
-              </div>
-            </div>
-            
-            <!-- Insight 3 (Atenção) -->
-            <div class="attention-card attention-indicator" onclick="selectClient('RetailMax')">
-              <div class="attention-card-header">
-                <span class="attention-client-name">RetailMax</span>
-                <span class="attention-badge attention">Atenção</span>
-              </div>
-              <div class="attention-card-body">
-                <span class="attention-desc">Dados comerciais do funil estão desatualizados.</span>
-                <span class="attention-impact">Impacto: Sem novas atualizações comerciais há 11 dias.</span>
-              </div>
-              <div class="attention-card-action">
-                <span class="action-prefix">Ação sugerida:</span>Notificar equipe comercial do cliente para atualização das propostas pendentes.
-              </div>
-            </div>
+
+          <div class="attention-grid" id="attention-grid">
+            <!-- Preenchido dinamicamente por renderAttentionCards() -->
           </div>
         </section>
         
