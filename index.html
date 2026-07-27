@@ -1032,11 +1032,11 @@
       <div id="view-dashboard-conversao" style="display: none;">
         <!-- Breadcrumb -->
         <div class="breadcrumb-container" style="padding: 16px 0 8px 0; font-size: 11px; color: var(--text-secondary); display: flex; gap: 6px; align-items: center;">
-          <span>Dashboard</span>
+          <span onclick="showDashboardPai()" style="cursor: pointer;">Dashboard</span>
           <span style="color: var(--text-muted);">&gt;</span>
-          <span style="cursor: pointer;" onclick="selectClient('Drex Imóveis')">Drex Imóveis</span>
+          <span id="conv-breadcrumb-client" style="cursor: pointer;">Drex Imóveis</span>
           <span style="color: var(--text-muted);">&gt;</span>
-          <span style="color: var(--text-primary); font-weight: 500;">Conversão</span>
+          <span id="conv-breadcrumb-analysis" style="color: var(--text-primary); font-weight: 500;">Conversão</span>
         </div>
 
         <!-- Barra de filtros -->
@@ -1157,7 +1157,7 @@
         <section class="table-card" style="padding: 0; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); background-color: var(--bg-card); margin-bottom: 24px;">
           <!-- Top Header inside the Card -->
           <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--divider-color);">
-            <h2 style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0;">ANÁLISE DE CONVERSÃO</h2>
+            <h2 id="conv-matrix-title" style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0;">ANÁLISE DE CONVERSÃO</h2>
             <div style="position: relative;">
               <span id="conv-menu-trigger" style="cursor: pointer; color: var(--text-secondary); font-size: 16px; padding: 4px 8px; display: inline-block; user-select: none;" onclick="toggleConvMenu(event)">⋮</span>
               
@@ -1838,9 +1838,11 @@
       <!-- Carregado dinamicamente -->
     </div>
     <div class="dropdown-footer">
-      <span class="dropdown-counter" id="clientes-counter">8 de 18 clientes</span>
-      <button class="filter-btn" style="height: 28px; font-size: 11px; padding: 0 10px;" onclick="openClienteModal()">+ Novo cliente</button>
-      <button class="dropdown-close-btn" onclick="toggleClientesDropdown(event, false)">Fechar</button>
+      <button class="filter-btn" style="height: 30px; font-size: 12px; padding: 0 12px; width: 100%;" onclick="openClienteModal()">+ Novo cliente</button>
+      <div class="dropdown-footer-bottom-row">
+        <span class="dropdown-counter" id="clientes-counter">8 de 18 clientes</span>
+        <button class="dropdown-close-btn" onclick="toggleClientesDropdown(event, false)">Fechar</button>
+      </div>
     </div>
   </div>
 

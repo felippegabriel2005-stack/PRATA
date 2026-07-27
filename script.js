@@ -899,9 +899,9 @@ function updateActiveAnalysisView(clientName, analysisName) {
   renderClientSidebar(clientKey);
   
   // If the dashboard is child view
-  const isConversao = currentAnalysis.includes('Conversão') || currentAnalysis === 'Conversão';
-  
-  if (isConversao) {
+  const isMatrixView = currentAnalysis !== 'Visão geral';
+
+  if (isMatrixView) {
     document.getElementById('conv-c-welcome').innerText = clientName;
   } else {
     const clientData = clientDetailedData[clientName];
@@ -1120,17 +1120,34 @@ function selectAnalysis(clientName, analysisName, analysisId) {
   if (typeof hideCommercialViews === 'function') hideCommercialViews();
 
   // Load screen view
-  const isConversao = analysisId === 'conversao' || analysisName === 'Conversão';
-  if (isConversao) {
+  // Todas as abas de análise (exceto "Visão geral") usam a tela de matriz de métricas
+  const isMatrixView = analysisName !== 'Visão geral';
+  if (isMatrixView) {
     document.getElementById('view-dashboard-pai').style.display = 'none';
     document.getElementById('view-dashboard-filho').style.display = 'none';
     document.getElementById('view-dashboard-conversao').style.display = 'block';
     const viewColab = document.getElementById('view-colaboradores');
     if (viewColab) viewColab.style.display = 'none';
-    
+
+    // Aplica o template de métricas específico desta aba (estrutura + rótulos)
+    const matrixTemplate = getAnalysisMatrixTemplate(analysisName);
+    conversaoRows = JSON.parse(JSON.stringify(matrixTemplate.rows));
+    const matrixTitleEl = document.getElementById('conv-matrix-title');
+    if (matrixTitleEl) matrixTitleEl.innerText = matrixTemplate.title;
+
     // Update client name in Conversão View Header
     document.getElementById('conv-c-welcome').innerText = clientName;
-    
+    document.getElementById('conv-c-meta').innerText = `${analysisName} · Maio 2025`;
+
+    // Breadcrumb dinâmico
+    const breadcrumbClientEl = document.getElementById('conv-breadcrumb-client');
+    if (breadcrumbClientEl) {
+      breadcrumbClientEl.innerText = clientName;
+      breadcrumbClientEl.onclick = () => selectClient(clientName);
+    }
+    const breadcrumbAnalysisEl = document.getElementById('conv-breadcrumb-analysis');
+    if (breadcrumbAnalysisEl) breadcrumbAnalysisEl.innerText = analysisName;
+
     // Init default filter values
     document.getElementById('conv-filter-platform').value = 'Todas';
     document.getElementById('conv-campaigns-search').value = '';
@@ -1701,6 +1718,211 @@ function updateConversaoData() {
   renderConvCampaignsDropdown();
   updateConvCampaignsCountText();
   updateConversaoMetrics();
+}
+
+// ==========================================================================
+// TEMPLATES DE MATRIZ DE MÉTRICAS POR TIPO DE ANÁLISE
+// ==========================================================================
+// Todas as abas de análise (exceto "Visão geral") usam a mesma tela e o mesmo
+// conjunto fixo de chaves (invest/impress/clicks/views/convs/cpm/cpc/cppv/cpa/
+// ctr/pvrate/convrate/buyerate) para reaproveitar o cálculo já existente em
+// updateConversaoMetrics(). Só o rótulo/descrição de cada métrica muda,
+// adaptado ao tipo de canal daquela aba.
+const ANALYSIS_MATRIX_TEMPLATES = {
+  'Conversão': {
+    title: 'ANÁLISE DE CONVERSÃO',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 30000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 900000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques", key: "clicks", desc: "no anúncio", meta: 6000, format: "Número", rule: "Maior é melhor" },
+        { name: "Page View", key: "views", desc: "visualizações de página", meta: 4800, format: "Número", rule: "Maior é melhor" },
+        { name: "Conversões", key: "convs", desc: "ações realizadas", meta: 400, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 30, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 5, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Custo por Page View", key: "cppv", desc: "custo por visualização", meta: 6, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPA", key: "cpa", desc: "CPA de conversão", meta: 80, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.2, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Page View", key: "pvrate", desc: "page views / cliques", meta: 80, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Conversão", key: "convrate", desc: "conversões / page views", meta: 8, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Compra", key: "buyerate", desc: "conversões / leads", meta: 3, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  },
+  'VideoView': {
+    title: 'ANÁLISE DE VIDEOVIEW',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 25000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 900000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques no vídeo", key: "clicks", desc: "no criativo", meta: 5000, format: "Número", rule: "Maior é melhor" },
+        { name: "Visualizações", key: "views", desc: "vídeo assistido", meta: 6000, format: "Número", rule: "Maior é melhor" },
+        { name: "Conversões", key: "convs", desc: "ações realizadas", meta: 250, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 28, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 6, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPV", key: "cppv", desc: "custo por visualização", meta: 0.15, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPA", key: "cpa", desc: "CPA de conversão", meta: 100, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.0, format: "Percentual", rule: "Maior é melhor" },
+        { name: "VTR", key: "pvrate", desc: "visualizações / impressões", meta: 35, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Conversão", key: "convrate", desc: "conversões / visualizações", meta: 5, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Engajamento", key: "buyerate", desc: "interação com o criativo", meta: 8, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  },
+  'Captação WhatsApp': {
+    title: 'ANÁLISE DE CAPTAÇÃO WHATSAPP',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 20000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 700000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques", key: "clicks", desc: "no anúncio", meta: 5500, format: "Número", rule: "Maior é melhor" },
+        { name: "Conversas iniciadas", key: "views", desc: "abriram o WhatsApp", meta: 3500, format: "Número", rule: "Maior é melhor" },
+        { name: "Conversões", key: "convs", desc: "ações realizadas", meta: 350, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 25, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 4, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Custo por Conversa", key: "cppv", desc: "custo por conversa iniciada", meta: 7, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPA", key: "cpa", desc: "CPA de conversão", meta: 70, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.3, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Conversa", key: "pvrate", desc: "conversas / cliques", meta: 65, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Conversão", key: "convrate", desc: "conversões / conversas", meta: 10, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Resposta", key: "buyerate", desc: "conversas respondidas", meta: 85, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  },
+  'Captação FB Leads': {
+    title: 'ANÁLISE DE CAPTAÇÃO FB LEADS',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 22000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 800000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques", key: "clicks", desc: "no anúncio", meta: 5800, format: "Número", rule: "Maior é melhor" },
+        { name: "Formulários abertos", key: "views", desc: "abriram o formulário", meta: 4200, format: "Número", rule: "Maior é melhor" },
+        { name: "Leads enviados", key: "convs", desc: "formulários enviados", meta: 380, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 27, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 4.5, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Custo por Formulário", key: "cppv", desc: "custo por formulário aberto", meta: 5.5, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPL", key: "cpa", desc: "custo por lead enviado", meta: 65, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.4, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Abertura", key: "pvrate", desc: "formulários / cliques", meta: 72, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Envio", key: "convrate", desc: "leads / formulários", meta: 9, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Qualificação", key: "buyerate", desc: "leads qualificados", meta: 40, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  },
+  'Pesquisa': {
+    title: 'ANÁLISE DE PESQUISA',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 28000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 850000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques", key: "clicks", desc: "no anúncio", meta: 5900, format: "Número", rule: "Maior é melhor" },
+        { name: "Page View", key: "views", desc: "visualizações de página", meta: 4700, format: "Número", rule: "Maior é melhor" },
+        { name: "Conversões", key: "convs", desc: "ações realizadas", meta: 390, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 31, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 5.2, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Custo por Page View", key: "cppv", desc: "custo por visualização", meta: 6.2, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPA", key: "cpa", desc: "CPA de conversão", meta: 78, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.25, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Page View", key: "pvrate", desc: "page views / cliques", meta: 78, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Conversão", key: "convrate", desc: "conversões / page views", meta: 8.2, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Compra", key: "buyerate", desc: "conversões / leads", meta: 3.2, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  },
+  'Vendas': {
+    title: 'ANÁLISE DE VENDAS',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 30000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 900000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques", key: "clicks", desc: "no anúncio", meta: 6000, format: "Número", rule: "Maior é melhor" },
+        { name: "Oportunidades", key: "views", desc: "leads qualificados no comercial", meta: 900, format: "Número", rule: "Maior é melhor" },
+        { name: "Vendas", key: "convs", desc: "negócios fechados", meta: 120, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 30, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 5, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Custo por Oportunidade", key: "cppv", desc: "custo por oportunidade gerada", meta: 33, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CAC", key: "cpa", desc: "custo de aquisição de cliente", meta: 250, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.2, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Oportunidade", key: "pvrate", desc: "oportunidades / cliques", meta: 15, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Fechamento", key: "convrate", desc: "vendas / oportunidades", meta: 13, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Recompra", key: "buyerate", desc: "clientes que voltaram a comprar", meta: 18, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  },
+  'Download de aplicativo': {
+    title: 'ANÁLISE DE DOWNLOAD DE APLICATIVO',
+    rows: [
+      { name: "Funil principal", metrics: [
+        { name: "Valor investido", key: "invest", desc: "total no período", meta: 24000, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Impressões", key: "impress", desc: "exibições totais", meta: 950000, format: "Número", rule: "Maior é melhor" },
+        { name: "Cliques", key: "clicks", desc: "no anúncio", meta: 6200, format: "Número", rule: "Maior é melhor" },
+        { name: "Acessos à loja", key: "views", desc: "abriram a página da loja", meta: 4900, format: "Número", rule: "Maior é melhor" },
+        { name: "Instalações", key: "convs", desc: "app instalado", meta: 320, format: "Número", rule: "Maior é melhor" }
+      ]},
+      { name: "Custos de aquisição", metrics: [
+        { name: "CPM", key: "cpm", desc: "custo por mil impressões", meta: 26, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPC", key: "cpc", desc: "custo por clique", meta: 4.8, format: "Moeda", rule: "Menor é melhor" },
+        { name: "Custo por Acesso à Loja", key: "cppv", desc: "custo por acesso à página", meta: 5, format: "Moeda", rule: "Menor é melhor" },
+        { name: "CPI", key: "cpa", desc: "custo por instalação", meta: 75, format: "Moeda", rule: "Menor é melhor" }
+      ]},
+      { name: "Eficiência", metrics: [
+        { name: "CTR", key: "ctr", desc: "cliques / impressões", meta: 1.15, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Acesso à Loja", key: "pvrate", desc: "acessos / cliques", meta: 79, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Taxa de Instalação", key: "convrate", desc: "instalações / acessos", meta: 7, format: "Percentual", rule: "Maior é melhor" },
+        { name: "Retenção D7", key: "buyerate", desc: "usuários ativos após 7 dias", meta: 35, format: "Percentual", rule: "Maior é melhor" }
+      ]}
+    ]
+  }
+};
+
+function getAnalysisMatrixTemplate(analysisName) {
+  // Correspondência exata primeiro (cobre os nomes padrão das abas)
+  if (ANALYSIS_MATRIX_TEMPLATES[analysisName]) return ANALYSIS_MATRIX_TEMPLATES[analysisName];
+
+  // Correspondência por palavra-chave, pra continuar funcionando mesmo se a aba for renomeada
+  const name = (analysisName || '').toLowerCase();
+  if (name.includes('conversão') || name.includes('conversao')) return ANALYSIS_MATRIX_TEMPLATES['Conversão'];
+  if (name.includes('video')) return ANALYSIS_MATRIX_TEMPLATES['VideoView'];
+  if (name.includes('whatsapp') || name.includes('whats')) return ANALYSIS_MATRIX_TEMPLATES['Captação WhatsApp'];
+  if (name.includes('facebook') || name.includes('fb ') || name.includes('fbleads')) return ANALYSIS_MATRIX_TEMPLATES['Captação FB Leads'];
+  if (name.includes('pesquisa') || name.includes('busca') || name.includes('search')) return ANALYSIS_MATRIX_TEMPLATES['Pesquisa'];
+  if (name.includes('venda')) return ANALYSIS_MATRIX_TEMPLATES['Vendas'];
+  if (name.includes('download') || name.includes('aplicativo') || name.includes('app')) return ANALYSIS_MATRIX_TEMPLATES['Download de aplicativo'];
+
+  return ANALYSIS_MATRIX_TEMPLATES['Conversão'];
+}
+
+// Fator determinístico que diferencia os números de cada aba (Conversão = 100% do
+// tráfego do cliente; as demais abas representam uma fatia plausível e estável dele).
+function getAnalysisFactor(analysisName) {
+  if (analysisName === 'Conversão') return 1;
+  let hash = 0;
+  for (let i = 0; i < analysisName.length; i++) hash += analysisName.charCodeAt(i);
+  return 0.35 + (hash % 40) / 100;
 }
 
 // Estado Global do Construtor de Análise de Conversão
@@ -2651,8 +2873,36 @@ function renderConversaoMatrix(dynamicValues) {
     }
 
     rowDiv.appendChild(cellsWrapper);
+
+    // Célula de exclusão da linha
+    const deleteCell = document.createElement('div');
+    deleteCell.style.display = 'flex';
+    deleteCell.style.alignItems = 'center';
+    deleteCell.style.justifyContent = 'center';
+    deleteCell.style.width = '40px';
+    deleteCell.style.flexShrink = '0';
+    deleteCell.style.borderLeft = '1px solid var(--divider-color)';
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'matrix-row-delete-btn';
+    deleteBtn.title = 'Excluir esta linha';
+    deleteBtn.innerText = '🗑️';
+    deleteBtn.onclick = () => deleteConversaoRow(rowIndex);
+    deleteCell.appendChild(deleteBtn);
+
+    rowDiv.appendChild(deleteCell);
     container.appendChild(rowDiv);
   });
+}
+
+function deleteConversaoRow(rowIndex) {
+  const row = conversaoRows[rowIndex];
+  if (!row) return;
+  if (!confirm(`Tem certeza que deseja excluir a linha "${row.name}"?`)) return;
+
+  conversaoRows.splice(rowIndex, 1);
+  updateConversaoMetrics();
+  showToast('Linha removida.');
 }
 
 function updateConversaoMetrics() {
@@ -2667,8 +2917,11 @@ function updateConversaoMetrics() {
   const state = calendarStates['conv'];
   const diffTime = Math.abs(state.endDate - state.startDate);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  const factor = Math.min(1.0, diffDays / 31);
-  
+  const periodFactor = Math.min(1.0, diffDays / 31);
+
+  // Cada aba de análise representa uma fatia diferente e estável do tráfego do cliente
+  const factor = periodFactor * getAnalysisFactor(currentAnalysis);
+
   conversaoCampaigns.forEach(camp => {
     if (camp.checked) {
       totalInvest += camp.invest * factor;
@@ -4103,17 +4356,26 @@ function toggleClientesDropdown(event, forceState) {
     
     dropdown.style.display = 'flex';
     const rect = trigger.getBoundingClientRect();
-    
+
+    const dropdownWidth = 320;
+    let left = rect.left;
+    if (left + dropdownWidth > window.innerWidth - 10) {
+      left = window.innerWidth - dropdownWidth - 10;
+    }
+    dropdown.style.left = `${left}px`;
+    dropdown.style.width = `${dropdownWidth}px`;
+
     const dropdownHeight = dropdown.offsetHeight || 320;
     let top = rect.top - dropdownHeight - 8;
     if (top < 10) {
       top = rect.bottom + 8;
     }
-    
+    // Garante que o dropdown inteiro (incluindo o rodapé) caiba na tela
+    if (top + dropdownHeight > window.innerHeight - 10) {
+      top = Math.max(10, window.innerHeight - dropdownHeight - 10);
+    }
     dropdown.style.top = `${top}px`;
-    dropdown.style.left = `${rect.left}px`;
-    dropdown.style.width = `${rect.width}px`;
-    
+
     document.addEventListener('click', closeClientesDropdownOutside);
   } else {
     dropdown.style.display = 'none';
