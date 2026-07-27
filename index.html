@@ -1242,10 +1242,25 @@
           </div>
         </header>
 
+        <!-- IMPORTAÇÃO E EXPORTAÇÃO DE DADOS -->
+        <div class="report-card" style="margin-bottom: 20px;">
+          <h3 class="report-section-title">Importar dados para o PRATA</h3>
+          <p style="font-size: 11px; color: var(--text-secondary); margin: -8px 0 4px 0; line-height: 1.5;">
+            Baixe o modelo de planilha, preencha com os dados dos seus clientes/campanhas/leads e importe de volta. Os dados são salvos direto no banco do PRATA.
+          </p>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+            <button class="filter-btn" onclick="downloadTemplateSpreadsheet()">⬇ Baixar modelo de planilha (.xlsx)</button>
+            <input type="file" id="import-file-input" accept=".xlsx,.xls,.csv" style="display: none;" onchange="handleImportFile(event)">
+            <button class="pink-btn" onclick="document.getElementById('import-file-input').click()">⬆ Importar planilha preenchida</button>
+            <span id="import-file-name" style="font-size: 11px; color: var(--text-secondary);"></span>
+          </div>
+          <div id="import-results" style="margin-top: 12px; display: none;"></div>
+        </div>
+
         <div class="reports-grid">
           <!-- COLUNA ESQUERDA: CONFIGURAÇÕES -->
           <div class="reports-config-col" style="display: flex; flex-direction: column; gap: 20px;">
-            
+
             <!-- BLOCO 1: FORMATO DE EXPORTAÇÃO -->
             <div class="report-card">
               <h3 class="report-section-title">1. Formato de exportação</h3>
@@ -1451,9 +1466,10 @@
 
             <!-- AÇÕES -->
             <div class="report-actions-container" style="display: flex; flex-direction: column; gap: 12px;">
-              <button class="pink-btn" style="width: 100%; height: 44px; font-size: 14px;" onclick="generateReportMock()">Gerar relatório</button>
+              <button class="pink-btn" style="width: 100%; height: 44px; font-size: 14px;" onclick="generateReport()">Gerar relatório</button>
               <div style="display: flex; gap: 12px;">
                 <button class="filter-btn" style="flex: 1; height: 38px; font-size: 12px;" onclick="saveReportConfigMock()">Salvar configuração</button>
+                <!-- (configuração salva apenas na sessão atual por enquanto) -->
                 <button class="filter-btn" style="flex: 1; height: 38px; font-size: 12px;" onclick="clearReportFilters()">Limpar filtros</button>
               </div>
             </div>
@@ -2048,6 +2064,7 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="script.js?v=53"></script>
 </body>
 </html>

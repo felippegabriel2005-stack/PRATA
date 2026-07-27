@@ -49,6 +49,267 @@ async function insertClient(name, status) {
   return data;
 }
 
+// ==========================================================================
+// CAMADA DE DADOS REAIS (importados via planilha) — substitui os mocks de
+// clientDetailedData / agencyPeriodData quando existe dado real no Supabase.
+// Se não houver dado importado para um cliente, os mocks continuam servindo
+// de fallback (comportamento de demonstração inalterado).
+// ==========================================================================
+
+const realClientDataChecked = new Set();
+let usingRealAgencyData = false;
+
+// O slider de período do Dashboard Filho (updateFilhoPeriodValues) assume que
+// metrics.investimento/receita vêm no formato "R$Xk" (milhares) — ele faz o
+// parse removendo tudo que não é dígito e depois multiplica de volta por 1000.
+// Precisamos seguir essa mesma convenção aqui, senão os cálculos de CPL/CPA
+// daquele slider ficam inflados em 1000x.
+function formatCurrencyThousands(val) {
+  return `R$${Math.round(val / 1000)}k`;
+}
+
+function buildClientDetailedDataFromReal(campaigns, leadsRows) {
+  let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
+  const byPlatform = {};
+  const byDate = {};
+
+  campaigns.forEach(c => {
+    totalInvest += Number(c.invest) || 0;
+    totalImpress += Number(c.impressions) || 0;
+    totalClicks += Number(c.clicks) || 0;
+    totalPageViews += Number(c.page_views) || 0;
+    totalLeads += Number(c.leads) || 0;
+    totalConvs += Number(c.conversions) || 0;
+    totalRevenue += Number(c.revenue) || 0;
+
+    const plat = c.platform || 'Outra';
+    if (!byPlatform[plat]) byPlatform[plat] = { invest: 0, clicks: 0, convs: 0, leads: 0 };
+    byPlatform[plat].invest += Number(c.invest) || 0;
+    byPlatform[plat].clicks += Number(c.clicks) || 0;
+    byPlatform[plat].convs += Number(c.conversions) || 0;
+    byPlatform[plat].leads += Number(c.leads) || 0;
+
+    if (!byDate[c.date]) byDate[c.date] = { invest: 0, convs: 0 };
+    byDate[c.date].invest += Number(c.invest) || 0;
+    byDate[c.date].convs += Number(c.conversions) || 0;
+  });
+
+  const conversaoPct = totalClicks > 0 ? (totalConvs / totalClicks) * 100 : 0;
+  const cpl = totalLeads > 0 ? totalInvest / totalLeads : 0;
+  const cpa = totalConvs > 0 ? totalInvest / totalConvs : 0;
+  const roi = totalInvest > 0 ? ((totalRevenue - totalInvest) / totalInvest) * 100 : 0;
+
+  const funnel = [formatNumber(totalImpress), formatNumber(totalClicks), formatNumber(totalPageViews), formatNumber(totalConvs)];
+  const funnelPct = [
+    '100%',
+    totalImpress > 0 ? `${((totalClicks / totalImpress) * 100).toFixed(0)}%` : '0%',
+    totalClicks > 0 ? `${((totalPageViews / totalClicks) * 100).toFixed(0)}%` : '0%',
+    `${conversaoPct.toFixed(1)}% final`
+  ];
+
+  const platformColors = { 'Google Ads': '#3b82f6', 'Meta Ads': '#8b5cf6', 'LinkedIn Ads': '#0a66c2' };
+  const platformList = Object.keys(byPlatform);
+  const sourceBasis = platformList.reduce((s, p) => s + (byPlatform[p].leads || byPlatform[p].clicks), 0) || 1;
+  const leadsSource = platformList.map((p, i) => {
+    const val = byPlatform[p].leads || byPlatform[p].clicks;
+    return {
+      name: p,
+      pct: Math.round((val / sourceBasis) * 100),
+      value: `${formatNumber(val)} leads`,
+      color: platformColors[p] || ['#10b981', '#f59e0b', '#ef4444', '#6b7280'][i % 4]
+    };
+  });
+
+  const lossCounts = {};
+  leadsRows.forEach(l => {
+    if (l.loss_reason && l.loss_reason.toString().trim()) {
+      lossCounts[l.loss_reason] = (lossCounts[l.loss_reason] || 0) + 1;
+    }
+  });
+  const totalLoss = Object.values(lossCounts).reduce((a, b) => a + b, 0);
+  const lossColors = ['#ef4444', '#f59e0b', '#6b7280', '#4b5563'];
+  const lossReasons = Object.keys(lossCounts).map((reason, i) => ({
+    name: reason,
+    pct: totalLoss > 0 ? Math.round((lossCounts[reason] / totalLoss) * 100) : 0,
+    color: lossColors[i % lossColors.length]
+  }));
+
+  const dateKeys = Object.keys(byDate).sort();
+  const weeks = {};
+  dateKeys.forEach(d => {
+    const dt = new Date(d + 'T00:00:00');
+    const firstDay = new Date(dt.getFullYear(), 0, 1);
+    const weekNum = Math.ceil((((dt - firstDay) / 86400000) + firstDay.getDay() + 1) / 7);
+    const key = `${dt.getFullYear()}-W${weekNum}`;
+    weeks[key] = (weeks[key] || 0) + byDate[d].invest;
+  });
+  const weekKeys = Object.keys(weeks).sort().slice(-4);
+  const evolution = weekKeys.map((k, i) => {
+    const val = weeks[k];
+    const prev = i > 0 ? weeks[weekKeys[i - 1]] : val;
+    const trendPct = prev > 0 ? ((val - prev) / prev) * 100 : 0;
+    return {
+      label: `Semana ${i + 1}`,
+      val: formatCurrency(val),
+      trend: `${trendPct >= 0 ? '▲' : '▼'} ${trendPct >= 0 ? '+' : ''}${trendPct.toFixed(0)}%`,
+      trendClass: trendPct >= 0 ? 'up' : 'down'
+    };
+  });
+
+  const chartDates = dateKeys.map(d => {
+    const dt = new Date(d + 'T00:00:00');
+    return `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const gads = byPlatform['Google Ads'] || { invest: 0, clicks: 0, convs: 0 };
+  const mads = byPlatform['Meta Ads'] || { invest: 0, clicks: 0, convs: 0 };
+
+  const campaignGroups = {};
+  campaigns.forEach(c => {
+    const key = `${c.campaign_name}||${c.platform}`;
+    if (!campaignGroups[key]) {
+      campaignGroups[key] = {
+        id: key, name: c.campaign_name, platform: c.platform,
+        labelColor: platformColors[c.platform] || '#6b7280',
+        invest: 0, impress: 0, clicks: 0, convs: 0,
+        status: c.campaign_status || 'Ativo', objective: c.objective || ''
+      };
+    }
+    campaignGroups[key].invest += Number(c.invest) || 0;
+    campaignGroups[key].impress += Number(c.impressions) || 0;
+    campaignGroups[key].clicks += Number(c.clicks) || 0;
+    campaignGroups[key].convs += Number(c.conversions) || 0;
+  });
+  const campaignsList = Object.values(campaignGroups).map(c => ({
+    ...c,
+    ctr: c.impress > 0 ? Number(((c.clicks / c.impress) * 100).toFixed(2)) : 0,
+    cpc: c.clicks > 0 ? Number((c.invest / c.clicks).toFixed(2)) : 0,
+    cpa: c.convs > 0 ? Number((c.invest / c.convs).toFixed(2)) : 0
+  }));
+
+  const importedAt = new Date().toLocaleString('pt-BR');
+  const topSource = leadsSource.slice().sort((a, b) => b.pct - a.pct)[0];
+
+  return {
+    segment: '',
+    period: 'Dados importados',
+    owner: '',
+    updated: importedAt,
+    status: 'Saudável',
+    statusClass: 'healthy',
+    metrics: {
+      investimento: formatCurrencyThousands(totalInvest),
+      receita: formatCurrencyThousands(totalRevenue),
+      conversao: `${conversaoPct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`,
+      cpl: formatCurrency(cpl),
+      cpa: formatCurrency(cpa),
+      roi: `${Math.round(roi)}%`
+    },
+    updates: [
+      { source: 'Planilha importada', time: importedAt, status: 'Atualizado', statusClass: 'healthy', obs: `${campaigns.length} linha(s) de campanha, ${leadsRows.length} lead(s)/venda(s) importados.` }
+    ],
+    funnel,
+    funnelPct,
+    leadsSource,
+    lossReasons,
+    evolution,
+    insights: [
+      `Investimento total de ${formatCurrency(totalInvest)} gerou receita de ${formatCurrency(totalRevenue)} (ROI de ${Math.round(roi)}%).`,
+      `Taxa de conversão geral (cliques → conversões): ${conversaoPct.toFixed(1)}%.`,
+      `Custo por lead médio de ${formatCurrency(cpl)} e custo por conversão de ${formatCurrency(cpa)}.`,
+      topSource ? `A plataforma ${topSource.name} concentrou a maior parte do volume de leads.` : 'Dados importados via planilha de campanhas.'
+    ],
+    adsKpis: {
+      period: 'Dados importados',
+      investimento: totalInvest,
+      cliques: totalClicks,
+      conversoes: totalConvs,
+      cpa: cpa,
+      ctr: totalImpress > 0 ? Number(((totalClicks / totalImpress) * 100).toFixed(2)) : 0
+    },
+    adsPlatforms: {
+      gads: { investimento: gads.invest, cliques: gads.clicks, conversoes: gads.convs, cpa: gads.convs > 0 ? gads.invest / gads.convs : 0 },
+      mads: { investimento: mads.invest, cliques: mads.clicks, conversoes: mads.convs, cpa: mads.convs > 0 ? mads.invest / mads.convs : 0 }
+    },
+    campaigns: campaignsList,
+    chartData: {
+      dates: chartDates,
+      investimento: dateKeys.map(d => byDate[d].invest),
+      conversoes: dateKeys.map(d => byDate[d].convs)
+    }
+  };
+}
+
+// Verifica (uma vez por sessão) se existe dado real importado para este cliente;
+// se sim, substitui a entrada de clientDetailedData por dados calculados de verdade.
+async function refreshClientDetailedDataIfReal(clientName) {
+  const slug = clientSlugFromName(clientName) || slugify(clientName);
+  if (realClientDataChecked.has(slug)) return;
+  realClientDataChecked.add(slug);
+
+  const [{ data: campaigns }, { data: leadsRows }] = await Promise.all([
+    supabaseClient.from('campaign_metrics').select('*').eq('client_slug', slug),
+    supabaseClient.from('leads_sales').select('*').eq('client_slug', slug)
+  ]);
+
+  if ((!campaigns || campaigns.length === 0) && (!leadsRows || leadsRows.length === 0)) {
+    return;
+  }
+
+  clientDetailedData[clientName] = buildClientDetailedDataFromReal(campaigns || [], leadsRows || []);
+}
+
+// Agrega dados reais de TODOS os clientes pro Dashboard Pai (agência). Se não
+// houver nenhum dado importado ainda, mantém agencyPeriodData mockado.
+async function refreshAgencyPeriodDataFromReal() {
+  const { data: campaigns } = await supabaseClient.from('campaign_metrics').select('*');
+  if (!campaigns || campaigns.length === 0) return;
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const quarterStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+  function aggregate(rows) {
+    let invest = 0, impress = 0, clicks = 0, pageViews = 0, convs = 0, revenue = 0;
+    rows.forEach(c => {
+      invest += Number(c.invest) || 0;
+      impress += Number(c.impressions) || 0;
+      clicks += Number(c.clicks) || 0;
+      pageViews += Number(c.page_views) || 0;
+      convs += Number(c.conversions) || 0;
+      revenue += Number(c.revenue) || 0;
+    });
+    const conv = clicks > 0 ? (convs / clicks) * 100 : 0;
+    const cpa = convs > 0 ? invest / convs : 0;
+    const roi = invest > 0 ? ((revenue - invest) / invest) * 100 : 0;
+    return {
+      investimento: formatCurrency(invest),
+      trendInvestimento: '■ Dados importados',
+      receita: formatCurrency(revenue),
+      trendReceita: '■ Dados importados',
+      conversao: `${conv.toFixed(1)}%`,
+      cpl: formatCurrency(cpa),
+      trendCpl: '■ Estável',
+      cpa: formatCurrency(cpa),
+      roi: `${Math.round(roi)}%`,
+      trendRoi: '■ Dados importados',
+      funnel: [formatNumber(impress), formatNumber(clicks), formatNumber(pageViews), formatNumber(convs)],
+      funnelPct: [
+        '100%',
+        impress > 0 ? `${((clicks / impress) * 100).toFixed(0)}%` : '0%',
+        clicks > 0 ? `${((pageViews / clicks) * 100).toFixed(0)}%` : '0%',
+        `${conv.toFixed(1)}% final`
+      ]
+    };
+  }
+
+  agencyPeriodData['All Time'] = aggregate(campaigns);
+  agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart));
+  agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart));
+
+  usingRealAgencyData = true;
+}
+
 // Base de Dados do Dashboard Pai (Agência) por Períodos
 const agencyPeriodData = {
   "All Time": {
@@ -400,7 +661,9 @@ let adsActivePlatform = "Todas";
 // --------------------------------------------------
 
 // Exibe o Dashboard Pai da Agência
-function showDashboardPai() {
+let agencyRealDataChecked = false;
+
+async function showDashboardPai() {
   currentClient = "";
   // Ajusta visibilidade dos blocos
   document.getElementById('view-dashboard-pai').style.display = 'block';
@@ -437,13 +700,17 @@ function showDashboardPai() {
   const paiEndInput = document.getElementById('pai-period-end');
   if (paiEndInput) paiEndInput.value = "31/05/2025";
 
+  if (!agencyRealDataChecked) {
+    agencyRealDataChecked = true;
+    await refreshAgencyPeriodDataFromReal();
+  }
+
   // Atualiza valores do Dashboard Pai com base no período atual
   updateDashboardPaiValues(agencyPeriodData[currentPeriod]);
 }
 
-// Alias to bridge english formatNumber with existing formatarNumero
 function formatNumber(valor) {
-  return formatarNumero(valor);
+  return Math.round(valor).toLocaleString('pt-BR');
 }
 
 // Injection of styles for custom context menus and rename inputs
@@ -1010,9 +1277,53 @@ function getAnalysisInsights(clientName, analysisName) {
   ];
 }
 
-function loadConversaoCampaignsForClient(clientName) {
-  conversaoCampaigns.length = 0; // Clear the array
-  
+let usingRealCampaignData = false;
+
+async function loadConversaoCampaignsForClient(clientName, analysisName) {
+  conversaoCampaigns.length = 0;
+  usingRealCampaignData = false;
+
+  const clientSlug = clientSlugFromName(clientName) || slugify(clientName);
+  const { data, error } = await supabaseClient
+    .from('campaign_metrics')
+    .select('*')
+    .eq('client_slug', clientSlug);
+
+  if (!error && data && data.length > 0) {
+    let rows = data;
+
+    // Se a aba for de um canal reconhecido (VideoView, WhatsApp, etc.), tenta
+    // restringir às campanhas cujo "Objetivo" da planilha bate com esse canal.
+    const known = matchKnownMatrixTemplate(analysisName);
+    if (known && analysisName !== 'Conversão') {
+      const filtered = rows.filter(r => matchKnownMatrixTemplate(r.objective) === known);
+      if (filtered.length > 0) rows = filtered;
+    }
+
+    const grouped = {};
+    rows.forEach(r => {
+      const key = `${r.campaign_name}||${r.platform}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          id: key, name: r.campaign_name, platform: r.platform, checked: true,
+          invest: 0, impress: 0, clicks: 0, views: 0, convs: 0, sales: 0
+        };
+      }
+      grouped[key].invest += Number(r.invest) || 0;
+      grouped[key].impress += Number(r.impressions) || 0;
+      grouped[key].clicks += Number(r.clicks) || 0;
+      grouped[key].views += Number(r.page_views) || 0;
+      grouped[key].convs += Number(r.conversions) || 0;
+      grouped[key].sales += Number(r.purchases) || 0;
+    });
+
+    conversaoCampaigns.push(...Object.values(grouped));
+    usingRealCampaignData = true;
+    return;
+  }
+
+  // Fallback: sem dados importados ainda para este cliente, mantém os dados
+  // fictícios de demonstração (mesmo comportamento de antes da importação existir).
   if (clientName === 'Drex Imóveis') {
     conversaoCampaigns.push(
       { id: 1, name: "Search | Lead | Imóvel BR", platform: "Google Ads", checked: false, invest: 12000, impress: 350000, clicks: 2100, views: 1800, convs: 150, sales: 4.65 },
@@ -1198,13 +1509,16 @@ async function selectAnalysis(clientName, analysisName, analysisId) {
     document.getElementById('conv-period-end').value = "31/05/2025";
     
     // Load dynamic campaigns based on the client!
-    loadConversaoCampaignsForClient(clientName);
-    
-    // Initial checked campaigns: Select first two by default
-    conversaoCampaigns.forEach((c, idx) => {
-      c.checked = (idx < 2);
-    });
-    
+    await loadConversaoCampaignsForClient(clientName, analysisName);
+
+    if (!usingRealCampaignData) {
+      // Dados fictícios: seleciona as duas primeiras campanhas por padrão
+      conversaoCampaigns.forEach((c, idx) => {
+        c.checked = (idx < 2);
+      });
+    }
+
+
     renderConvCampaignsDropdown();
     updateConvCampaignsCountText();
     updateConversaoMetrics();
@@ -3013,8 +3327,9 @@ function updateConversaoMetrics() {
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   const periodFactor = Math.min(1.0, diffDays / 31);
 
-  // Cada aba de análise representa uma fatia diferente e estável do tráfego do cliente
-  const factor = periodFactor * getAnalysisFactor(currentAnalysis);
+  // Com dados reais importados, usa os números tal como estão (sem escala
+  // artificial). Sem import, mantém a variação fictícia por aba/período.
+  const factor = usingRealCampaignData ? 1 : (periodFactor * getAnalysisFactor(currentAnalysis));
 
   conversaoCampaigns.forEach(camp => {
     if (camp.checked) {
@@ -3058,8 +3373,11 @@ function updateConversaoMetrics() {
 }
 
 // Abre o Dashboard Filho de um Cliente Específico
-function selectClient(clientName) {
+async function selectClient(clientName) {
   currentClient = clientName;
+
+  await refreshClientDetailedDataIfReal(clientName);
+
   // Obtém os dados detalhados do cliente
   const data = clientDetailedData[clientName];
   if (!data) {
@@ -3593,12 +3911,13 @@ function renderAdsChart(chartData) {
   const maxConvs = Math.max(...chartData.conversoes);
 
   // Fator de escala Y
-  const scaleYInvest = chartH / (maxInvest * 1.1);
-  const scaleYConvs = chartH / (maxConvs * 1.1);
+  const scaleYInvest = maxInvest > 0 ? chartH / (maxInvest * 1.1) : 0;
+  const scaleYConvs = maxConvs > 0 ? chartH / (maxConvs * 1.1) : 0;
 
   // Número de pontos
   const n = chartData.dates.length;
-  const stepX = chartW / (n - 1);
+  if (n === 0) return; // sem dados suficientes pra desenhar o gráfico
+  const stepX = n > 1 ? chartW / (n - 1) : 0;
 
   // Constrói SVG
   let svgContent = `<svg width="${w}" height="${h}" style="overflow: visible;">`;
@@ -4729,12 +5048,475 @@ function updateReportPreview() {
   msgEl.innerText = `${formatDesc} O escopo gerado será do tipo "${selectedReportType}"${scopeDesc}`;
 }
 
-function generateReportMock() {
+function saveReportConfigMock() {
+  showToast('Configuração de relatório salva com sucesso!');
+}
+
+// ==========================================================================
+// IMPORTAÇÃO / EXPORTAÇÃO DE DADOS (planilha simples <-> Supabase)
+// ==========================================================================
+
+function parseImportNumber(val) {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return val;
+  const cleaned = val.toString().replace(/[R$\s%]/g, '').replace(/\./g, '').replace(',', '.');
+  const n = parseFloat(cleaned);
+  return isNaN(n) ? 0 : n;
+}
+
+function parseImportDate(val) {
+  if (!val) return null;
+  if (val instanceof Date && !isNaN(val)) return val.toISOString().slice(0, 10);
+  const s = val.toString().trim();
+  const isoMatch = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2].padStart(2, '0')}-${isoMatch[3].padStart(2, '0')}`;
+  const brMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (brMatch) return `${brMatch[3]}-${brMatch[2].padStart(2, '0')}-${brMatch[1].padStart(2, '0')}`;
+  return null;
+}
+
+function mapClientStatus(val) {
+  const v = (val || '').toString().toLowerCase();
+  if (v.includes('atenção') || v.includes('atencao')) return 'attention';
+  if (v.includes('crítico') || v.includes('critico')) return 'critical';
+  return 'healthy';
+}
+
+// Resolve o slug de um cliente pelo NOME (não recria o slug a partir do texto
+// se o cliente já existir com outro slug — ex: "Drex Imóveis" já existe como
+// slug "drex", não "drex-imoveis"). Cacheado por nome durante a importação.
+const clientNameToSlugCache = {};
+async function resolveOrCreateClientSlug(name) {
+  if (clientNameToSlugCache[name]) return clientNameToSlugCache[name];
+
+  const { data: existing } = await supabaseClient.from('clients').select('slug').eq('name', name).maybeSingle();
+  const slug = existing ? existing.slug : slugify(name);
+  clientNameToSlugCache[name] = slug;
+  return slug;
+}
+
+async function ensureClientExists(name) {
+  const slug = await resolveOrCreateClientSlug(name);
+  const { data } = await supabaseClient.from('clients').select('slug').eq('slug', slug).maybeSingle();
+  if (!data) {
+    await supabaseClient.from('clients').insert({ slug, name, status: 'healthy', pinned: false, position: 999 });
+  }
+  return slug;
+}
+
+function downloadTemplateSpreadsheet() {
+  const wb = XLSX.utils.book_new();
+
+  const instrucoes = [
+    ['PRATA - Modelo de importação de dados'],
+    [''],
+    ['Como usar:'],
+    ['1. Preencha as abas que fizerem sentido (Clientes, Campanhas, Leads e Vendas, Pipeline Comercial). A aba Metas é opcional.'],
+    ['2. Não precisa preencher nenhum ID técnico - o PRATA identifica tudo pelo nome do cliente/campanha.'],
+    ['3. Salve o arquivo e importe de volta na tela de Relatórios, botão "Importar planilha preenchida".'],
+    [''],
+    ['Valores aceitos:'],
+    ['Status do cliente: Saudável, Atenção, Crítico'],
+    ['Ativo (Clientes): Sim ou Não'],
+    ['Etapa (Leads e Vendas): Novo, Em abordagem, Atendido, Qualificado, Proposta enviada, Venda, Descartado'],
+    ['Etapa (Pipeline Comercial): Em abordagem, Lead qualificado, Reunião agendada, Proposta enviada, Follow-up proposta, Fechado/Ganho, Descartado/Perdido'],
+    ['Regra (Metas): Maior é melhor, Menor é melhor, Igual ou próximo é melhor, Apenas referência'],
+    ['Datas: formato AAAA-MM-DD (ex: 2025-05-01)'],
+    ['Números (Investimento, Impressões, Cliques etc.): apenas números, sem R$ ou separador de milhar']
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(instrucoes), 'Instruções');
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Cliente', 'Segmento', 'Status', 'Responsável', 'Cidade', 'Estado', 'Ativo'],
+    ['Drex Imóveis', 'Imobiliário', 'Saudável', 'Felippe', 'São Paulo', 'SP', 'Sim']
+  ]), 'Clientes');
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Data', 'Cliente', 'Campanha', 'Plataforma', 'Objetivo', 'Status da campanha', 'Investimento', 'Impressões', 'Alcance', 'Cliques', 'Cliques no link', 'Page Views', 'Leads', 'Conversões', 'Compras', 'Receita', 'Mensagens iniciadas', 'Formulários enviados', 'Visualizações de vídeo', 'ThruPlay'],
+    ['2025-05-01', 'Drex Imóveis', 'Search | Lead | Imóvel BR', 'Google Ads', 'Conversão', 'Ativa', 2800, 89000, 75000, 537, 480, 459, 42, 38, 5, 52000, 0, 0, 0, 0]
+  ]), 'Campanhas');
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Data', 'Cliente', 'Nome do lead', 'Empresa', 'Telefone', 'E-mail', 'Origem', 'Campanha', 'Responsável', 'Etapa', 'Status', 'Valor da venda', 'Receita', 'Motivo de perda'],
+    ['2025-05-10', 'Drex Imóveis', 'João Silva', 'Silva Investimentos', '11999999999', 'joao@email.com', 'Google Ads', 'Search | Lead | Imóvel BR', 'Mayara', 'Venda', 'Ganho', 52000, 52000, '']
+  ]), 'Leads e Vendas');
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Data', 'Empresa', 'Segmento', 'Telefone', 'Origem', 'Responsável', 'Etapa', 'Valor estimado', 'Próximo passo', 'Observações', 'Status'],
+    ['2025-05-20', 'APDR - Auto Performance Drag Race', 'Automotivo', '11914859517', 'Radar de empresas', 'Mayara', 'Em abordagem', 0, 'Primeiro contato', 'Lead importado pelo Radar de empresas', 'Novo']
+  ]), 'Pipeline Comercial');
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Cliente', 'Objetivo', 'Métrica', 'Meta', 'Regra'],
+    ['Drex Imóveis', 'Conversão', 'Taxa de Conversão', '8%', 'Maior é melhor'],
+    ['Drex Imóveis', 'Conversão', 'CPA', 'R$80', 'Menor é melhor']
+  ]), 'Metas (opcional)');
+
+  XLSX.writeFile(wb, 'PRATA_modelo_importacao.xlsx');
+}
+
+function handleImportFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  document.getElementById('import-file-name').innerText = file.name;
+
+  const container = document.getElementById('import-results');
+  container.style.display = 'block';
+  container.innerHTML = '<div style="color: var(--text-secondary); font-size: 12px;">Importando...</div>';
+
+  const reader = new FileReader();
+  reader.onload = async function (e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      await processImportWorkbook(workbook);
+    } catch (err) {
+      console.error('Erro ao importar planilha', err);
+      showImportResults({ summary: [], errors: ['Não foi possível ler o arquivo. Confira se é um .xlsx, .xls ou .csv válido.'] });
+    }
+    event.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+async function processImportWorkbook(workbook) {
+  const results = { summary: [], errors: [] };
+
+  const findSheet = (candidates) => {
+    const found = workbook.SheetNames.find(n => candidates.some(c => n.toLowerCase().trim() === c.toLowerCase()));
+    return found ? workbook.Sheets[found] : null;
+  };
+
+  const clientesSheet = findSheet(['Clientes']);
+  const campanhasSheet = findSheet(['Campanhas']);
+  const leadsSheet = findSheet(['Leads e Vendas']);
+  const pipelineSheet = findSheet(['Pipeline Comercial']);
+  const metasSheet = findSheet(['Metas', 'Metas (opcional)']);
+
+  if (clientesSheet) await importClientesSheet(clientesSheet, results);
+  if (campanhasSheet) await importCampanhasSheet(campanhasSheet, results);
+  if (leadsSheet) await importLeadsVendasSheet(leadsSheet, results);
+  if (pipelineSheet) await importPipelineSheet(pipelineSheet, results);
+  if (metasSheet) await importMetasSheet(metasSheet, results);
+
+  if (!clientesSheet && !campanhasSheet && !leadsSheet && !pipelineSheet && !metasSheet) {
+    results.errors.push('Nenhuma aba reconhecida foi encontrada. As abas devem se chamar: Clientes, Campanhas, "Leads e Vendas", "Pipeline Comercial" ou Metas.');
+  }
+
+  showImportResults(results);
+
+  // Força reavaliação dos dados reais (dashboard agência + clientes) na próxima navegação
+  realClientDataChecked.clear();
+  agencyRealDataChecked = false;
+
+  allClients = await fetchClients();
+  renderSidebarClients();
+  // renderSidebarClients() recria os <li> da sidebar do zero, incluindo o
+  // <ul class="analysis-menu"> vazio de cada cliente fixado — precisa
+  // repopular as sub-abas de análise de cada um, senão elas ficam vazias.
+  allClients.filter(c => c.pinned).forEach(c => renderClientSidebar(c.slug));
+  showToast('Importação concluída!');
+}
+
+async function importClientesSheet(sheet, results) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  let ok = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const rowNum = i + 2;
+    const name = (r['Cliente'] || '').toString().trim();
+    if (!name) { results.errors.push(`Clientes, linha ${rowNum}: "Cliente" está vazio.`); continue; }
+
+    const activeVal = (r['Ativo'] || '').toString().trim().toLowerCase();
+    const active = activeVal === '' ? true : (activeVal === 'sim' || activeVal === 'yes' || activeVal === 'true');
+
+    const slug = await resolveOrCreateClientSlug(name);
+    const payload = {
+      slug,
+      name,
+      status: mapClientStatus(r['Status']),
+      segment: (r['Segmento'] || '').toString().trim() || null,
+      owner: (r['Responsável'] || '').toString().trim() || null,
+      city: (r['Cidade'] || '').toString().trim() || null,
+      state: (r['Estado'] || '').toString().trim() || null,
+      active
+    };
+
+    const { error } = await supabaseClient.from('clients').upsert(payload, { onConflict: 'slug' });
+    if (error) results.errors.push(`Clientes, linha ${rowNum}: erro ao salvar (${error.message}).`);
+    else ok++;
+  }
+  if (ok) results.summary.push(`${ok} cliente(s) importado(s)/atualizado(s).`);
+}
+
+async function importCampanhasSheet(sheet, results) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const batch = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const rowNum = i + 2;
+    const clientName = (r['Cliente'] || '').toString().trim();
+    const campaignName = (r['Campanha'] || '').toString().trim();
+    const dateStr = parseImportDate(r['Data']);
+
+    if (!clientName) { results.errors.push(`Campanhas, linha ${rowNum}: "Cliente" está vazio.`); continue; }
+    if (!campaignName) { results.errors.push(`Campanhas, linha ${rowNum}: "Campanha" está vazia.`); continue; }
+    if (!dateStr) { results.errors.push(`Campanhas, linha ${rowNum}: "Data" inválida (use AAAA-MM-DD).`); continue; }
+
+    const clientSlug = await ensureClientExists(clientName);
+
+    batch.push({
+      client_slug: clientSlug,
+      date: dateStr,
+      campaign_name: campaignName,
+      platform: (r['Plataforma'] || '').toString().trim() || 'Outra',
+      objective: (r['Objetivo'] || '').toString().trim() || null,
+      campaign_status: (r['Status da campanha'] || '').toString().trim() || null,
+      invest: parseImportNumber(r['Investimento']),
+      impressions: parseImportNumber(r['Impressões']),
+      reach: parseImportNumber(r['Alcance']),
+      clicks: parseImportNumber(r['Cliques']),
+      link_clicks: parseImportNumber(r['Cliques no link']),
+      page_views: parseImportNumber(r['Page Views']),
+      leads: parseImportNumber(r['Leads']),
+      conversions: parseImportNumber(r['Conversões']),
+      purchases: parseImportNumber(r['Compras']),
+      revenue: parseImportNumber(r['Receita']),
+      messages_started: parseImportNumber(r['Mensagens iniciadas']),
+      forms_submitted: parseImportNumber(r['Formulários enviados']),
+      video_views: parseImportNumber(r['Visualizações de vídeo']),
+      thruplay: parseImportNumber(r['ThruPlay'])
+    });
+  }
+
+  if (batch.length) {
+    const { error } = await supabaseClient.from('campaign_metrics').upsert(batch, { onConflict: 'client_slug,campaign_name,platform,date' });
+    if (error) results.errors.push(`Campanhas: erro ao salvar em lote (${error.message}).`);
+    else results.summary.push(`${batch.length} linha(s) de campanha importada(s).`);
+  }
+}
+
+async function importLeadsVendasSheet(sheet, results) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const batch = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const rowNum = i + 2;
+    const clientName = (r['Cliente'] || '').toString().trim();
+    const dateStr = parseImportDate(r['Data']);
+
+    if (!clientName) { results.errors.push(`Leads e Vendas, linha ${rowNum}: "Cliente" está vazio.`); continue; }
+    if (!dateStr) { results.errors.push(`Leads e Vendas, linha ${rowNum}: "Data" inválida (use AAAA-MM-DD).`); continue; }
+
+    const clientSlug = await ensureClientExists(clientName);
+
+    batch.push({
+      client_slug: clientSlug,
+      date: dateStr,
+      lead_name: (r['Nome do lead'] || '').toString().trim() || `Lead linha ${rowNum}`,
+      company: (r['Empresa'] || '').toString().trim() || null,
+      phone: (r['Telefone'] || '').toString().trim() || null,
+      email: (r['E-mail'] || '').toString().trim() || null,
+      source: (r['Origem'] || '').toString().trim() || null,
+      campaign_name: (r['Campanha'] || '').toString().trim() || null,
+      owner: (r['Responsável'] || '').toString().trim() || null,
+      stage: (r['Etapa'] || '').toString().trim() || null,
+      status: (r['Status'] || '').toString().trim() || null,
+      sale_value: parseImportNumber(r['Valor da venda']),
+      revenue: parseImportNumber(r['Receita']),
+      loss_reason: (r['Motivo de perda'] || '').toString().trim() || null
+    });
+  }
+
+  if (batch.length) {
+    const { error } = await supabaseClient.from('leads_sales').upsert(batch, { onConflict: 'client_slug,lead_name,date' });
+    if (error) results.errors.push(`Leads e Vendas: erro ao salvar em lote (${error.message}).`);
+    else results.summary.push(`${batch.length} lead(s)/venda(s) importado(s).`);
+  }
+}
+
+async function importPipelineSheet(sheet, results) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  let ok = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const rowNum = i + 2;
+    const empresa = (r['Empresa'] || '').toString().trim();
+    if (!empresa) { results.errors.push(`Pipeline Comercial, linha ${rowNum}: "Empresa" está vazia.`); continue; }
+
+    const etapaNome = (r['Etapa'] || '').toString().trim() || 'Em abordagem';
+    let stage = commercialStages.find(s => s.name.toLowerCase() === etapaNome.toLowerCase());
+    if (!stage) {
+      stage = { id: 'stage_' + Date.now() + '_' + i, name: etapaNome, color: STAGE_PRESET_COLORS[commercialStages.length % STAGE_PRESET_COLORS.length] };
+      commercialStages.push(stage);
+    }
+
+    const dateStr = parseImportDate(r['Data']);
+    commercialLeads.push({
+      id: crypto.randomUUID(),
+      name: empresa,
+      stageId: stage.id,
+      tag: (r['Segmento'] || '').toString().trim() || 'Geral',
+      phone: (r['Telefone'] || '').toString().trim() || '',
+      email: '',
+      role: '',
+      bu: (r['Segmento'] || '').toString().trim() || 'Geral',
+      potentialValue: parseImportNumber(r['Valor estimado']),
+      negotiation: '-',
+      lossReason: '-',
+      firstContactDate: dateStr ? formatDateDDMMYYYY(new Date(dateStr + 'T00:00:00')) : formatDateDDMMYYYY(new Date()),
+      owner: (r['Responsável'] || '').toString().trim() || 'felippe.alves',
+      source: (r['Origem'] || '').toString().trim() || 'Importação de planilha',
+      nextAction: (r['Próximo passo'] || '').toString().trim() || '-'
+    });
+    ok++;
+  }
+  if (ok) {
+    await saveCommercialState();
+    results.summary.push(`${ok} card(s) de pipeline comercial importado(s).`);
+  }
+}
+
+async function importMetasSheet(sheet, results) {
+  const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  const batch = [];
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const rowNum = i + 2;
+    const clientName = (r['Cliente'] || '').toString().trim();
+    const objetivo = (r['Objetivo'] || '').toString().trim();
+    const metrica = (r['Métrica'] || '').toString().trim();
+    if (!clientName || !objetivo || !metrica) {
+      results.errors.push(`Metas, linha ${rowNum}: Cliente, Objetivo e Métrica são obrigatórios.`);
+      continue;
+    }
+
+    const clientSlug = await ensureClientExists(clientName);
+
+    const metaRaw = (r['Meta'] || '').toString();
+    const format = metaRaw.includes('%') ? 'Percentual' : (metaRaw.includes('R$') ? 'Moeda' : 'Número');
+
+    batch.push({
+      client_slug: clientSlug,
+      objective: objetivo,
+      metric_name: metrica,
+      target_value: parseImportNumber(metaRaw),
+      target_format: format,
+      rule: (r['Regra'] || '').toString().trim() || 'Apenas referência'
+    });
+  }
+
+  if (batch.length) {
+    const { error } = await supabaseClient.from('targets').upsert(batch, { onConflict: 'client_slug,objective,metric_name' });
+    if (error) results.errors.push(`Metas: erro ao salvar em lote (${error.message}).`);
+    else results.summary.push(`${batch.length} meta(s) importada(s).`);
+  }
+}
+
+function showImportResults(results) {
+  const container = document.getElementById('import-results');
+  container.style.display = 'block';
+  let html = '';
+  if (results.summary.length) {
+    html += `<div style="color: var(--color-green); font-size: 12px; margin-bottom: 8px;">✓ ${results.summary.join(' ')}</div>`;
+  }
+  if (results.errors.length) {
+    html += `<div style="color: var(--color-red); font-size: 11px;"><strong>${results.errors.length} aviso(s):</strong><ul style="margin: 6px 0 0 18px; padding: 0;">`;
+    results.errors.slice(0, 30).forEach(e => { html += `<li>${e}</li>`; });
+    if (results.errors.length > 30) html += `<li>... e mais ${results.errors.length - 30}.</li>`;
+    html += `</ul></div>`;
+  }
+  container.innerHTML = html || '<div style="color: var(--text-secondary); font-size: 12px;">Nenhum dado processado.</div>';
+}
+
+// --------------------------------------------------
+// Geração real de relatórios (export)
+// --------------------------------------------------
+
+async function fetchReportCampaignRows() {
+  const clientFilter = document.getElementById('report-filter-client').value;
+  let query = supabaseClient.from('campaign_metrics').select('*').order('date');
+  if (clientFilter && clientFilter !== 'Todos os clientes') {
+    query = query.eq('client_slug', clientSlugFromName(clientFilter));
+  }
+  const platform = document.getElementById('report-filter-platform').value;
+  if (platform && platform !== 'Todas') {
+    query = query.eq('platform', platform);
+  }
+  const { data, error } = await query;
+  if (error) { console.error('Erro ao buscar campanhas para relatório', error); return []; }
+  return data || [];
+}
+
+function reportRowsToAOA(rows) {
+  const header = ['Data', 'Cliente', 'Campanha', 'Plataforma', 'Objetivo', 'Investimento', 'Impressões', 'Cliques', 'Page Views', 'Leads', 'Conversões', 'Receita', 'CTR (%)', 'CPC', 'CPA', 'ROI (%)'];
+  const lines = rows.map(r => {
+    const ctr = r.impressions > 0 ? (r.clicks / r.impressions) * 100 : 0;
+    const cpc = r.clicks > 0 ? r.invest / r.clicks : 0;
+    const cpa = r.conversions > 0 ? r.invest / r.conversions : 0;
+    const roi = r.invest > 0 ? ((r.revenue - r.invest) / r.invest) * 100 : 0;
+    return [
+      r.date, clientNameFromSlug(r.client_slug) || r.client_slug, r.campaign_name, r.platform, r.objective || '',
+      r.invest, r.impressions, r.clicks, r.page_views, r.leads, r.conversions, r.revenue,
+      ctr.toFixed(2), cpc.toFixed(2), cpa.toFixed(2), roi.toFixed(2)
+    ];
+  });
+  return [header, ...lines];
+}
+
+async function generateReport() {
+  const rows = await fetchReportCampaignRows();
+
+  if (rows.length === 0) {
+    showToast('Nenhum dado de campanha importado ainda para gerar o relatório. Importe uma planilha primeiro.');
+    return;
+  }
+
+  const aoa = reportRowsToAOA(rows);
+  const fileBase = `PRATA_relatorio_${selectedReportType.replace(/\s+/g, '_')}`;
+
+  if (selectedReportFormat === 'CSV') {
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const csv = XLSX.utils.sheet_to_csv(ws);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    downloadBlob(blob, `${fileBase}.csv`);
+  } else if (selectedReportFormat === 'EXCEL') {
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'Relatório');
+    XLSX.writeFile(wb, `${fileBase}.xlsx`);
+  } else {
+    // PDF simplificado: abre uma janela de impressão com a tabela pronta pra "Salvar como PDF"
+    printReportAsPDF(aoa, fileBase);
+  }
+
   showToast(`Relatório ${selectedReportFormat} ("${selectedReportType}") gerado com sucesso!`);
 }
 
-function saveReportConfigMock() {
-  showToast('Configuração de relatório salva com sucesso!');
+function printReportAsPDF(aoa, title) {
+  const win = window.open('', '_blank');
+  const [header, ...lines] = aoa;
+  const rowsHtml = lines.map(line => `<tr>${line.map(v => `<td style="padding:4px 8px;border:1px solid #ccc;font-size:11px;">${v}</td>`).join('')}</tr>`).join('');
+  const headHtml = `<tr>${header.map(h => `<th style="padding:4px 8px;border:1px solid #ccc;background:#eee;font-size:11px;text-align:left;">${h}</th>`).join('')}</tr>`;
+  win.document.write(`
+    <html><head><title>${title}</title></head>
+    <body style="font-family: sans-serif;">
+      <h2>PRATA - ${title}</h2>
+      <table style="border-collapse: collapse;">${headHtml}${rowsHtml}</table>
+      <script>window.onload = () => window.print();</script>
+    </body></html>
+  `);
+  win.document.close();
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 function clearReportFilters() {
