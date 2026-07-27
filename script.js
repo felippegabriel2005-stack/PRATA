@@ -42,7 +42,7 @@ async function insertClient(name, status) {
   const position = allClients.length;
   const { data, error } = await supabaseClient
     .from('clients')
-    .insert({ slug, name, status, pinned: false, position })
+    .insert({ slug, name, status, pinned: true, position })
     .select()
     .single();
   if (error) { console.error('Erro ao criar cliente', error); return null; }
@@ -1059,7 +1059,7 @@ function renderClientSidebar(clientKey) {
   addLi.innerText = '+ Nova análise';
   addLi.onclick = function(e) {
     e.stopPropagation();
-    addNewAnalysisPrompt(clientKey);
+    showNewAnalysisPicker(e, clientKey);
   };
   menu.appendChild(addLi);
 }
@@ -1202,22 +1202,71 @@ function deleteAnalysis(clientKey, analysisId) {
   }
 }
 
-function addNewAnalysisPrompt(clientKey) {
+// Cria de fato a aba de análise (usado tanto pela opção padrão escolhida no
+// menu quanto pelo fluxo de nome personalizado).
+function createAnalysisTab(clientKey, id, name) {
+  if (!clientAnalyses[clientKey]) {
+    clientAnalyses[clientKey] = [];
+  }
+  clientAnalyses[clientKey].push({ id, name });
+  saveClientAnalyses(clientKey);
+  renderClientSidebar(clientKey);
+
+  const clientName = clientNameFromSlug(clientKey);
+  selectAnalysis(clientName, name, id);
+}
+
+function promptCustomAnalysisName(clientKey) {
   const name = prompt("Digite o nome da nova análise:");
   if (name && name.trim()) {
-    const cleanName = name.trim();
-    const id = 'ana_' + Date.now();
-    
-    if (!clientAnalyses[clientKey]) {
-      clientAnalyses[clientKey] = [];
-    }
-    clientAnalyses[clientKey].push({ id, name: cleanName });
-    saveClientAnalyses(clientKey);
-    renderClientSidebar(clientKey);
-
-    const clientName = clientNameFromSlug(clientKey);
-    selectAnalysis(clientName, cleanName, id);
+    createAnalysisTab(clientKey, 'ana_' + Date.now(), name.trim());
   }
+}
+
+// Menu "+ Nova análise": mostra as abas padrão que o cliente ainda não tem
+// (VideoView, Conversão, WhatsApp, etc.) pra facilitar, além da opção de
+// digitar um nome personalizado.
+function showNewAnalysisPicker(e, clientKey) {
+  closeActiveContextMenu();
+
+  const existingIds = new Set((clientAnalyses[clientKey] || []).map(a => a.id));
+  const availableDefaults = defaultAnalyses.filter(a => a.id !== 'personalizado' && !existingIds.has(a.id));
+
+  const menu = document.createElement('div');
+  menu.className = 'custom-context-menu';
+
+  const rect = e.target.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + window.scrollY + 4}px`;
+  menu.style.left = `${rect.left + window.scrollX - 90}px`;
+
+  availableDefaults.forEach(a => {
+    const item = document.createElement('div');
+    item.className = 'context-menu-item';
+    item.innerText = a.name;
+    item.onclick = function(evt) {
+      evt.stopPropagation();
+      closeActiveContextMenu();
+      createAnalysisTab(clientKey, a.id, a.name);
+    };
+    menu.appendChild(item);
+  });
+
+  const customItem = document.createElement('div');
+  customItem.className = 'context-menu-item';
+  customItem.innerHTML = '✏️ Personalizado...';
+  customItem.onclick = function(evt) {
+    evt.stopPropagation();
+    closeActiveContextMenu();
+    promptCustomAnalysisName(clientKey);
+  };
+  menu.appendChild(customItem);
+
+  document.body.appendChild(menu);
+  activeContextMenu = menu;
+
+  setTimeout(() => {
+    window.addEventListener('click', closeActiveContextMenu);
+  }, 10);
 }
 
 // Helper to format currency
@@ -5263,7 +5312,7 @@ async function ensureClientExists(name) {
   const slug = await resolveOrCreateClientSlug(name);
   const { data } = await supabaseClient.from('clients').select('slug').eq('slug', slug).maybeSingle();
   if (!data) {
-    await supabaseClient.from('clients').insert({ slug, name, status: 'healthy', pinned: false, position: 999 });
+    await supabaseClient.from('clients').insert({ slug, name, status: 'healthy', pinned: true, position: 999 });
   }
   return slug;
 }
@@ -5403,7 +5452,8 @@ async function importClientesSheet(sheet, results) {
       owner: (r['Responsável'] || '').toString().trim() || null,
       city: (r['Cidade'] || '').toString().trim() || null,
       state: (r['Estado'] || '').toString().trim() || null,
-      active
+      active,
+      pinned: true
     };
 
     const { error } = await supabaseClient.from('clients').upsert(payload, { onConflict: 'slug' });
