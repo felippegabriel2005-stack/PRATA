@@ -545,20 +545,39 @@ async function initClientAnalyses() {
   });
 }
 
-async function saveClientAnalyses() {
-  const slugs = Object.keys(clientAnalyses);
-  if (!slugs.length) return;
+// Sincroniza as abas de análise de UM único cliente por vez (nunca de todos os
+// clientes carregados em memória de uma vez) — evita que uma edição num cliente
+// apague/sobrescreva os dados de outro por causa de estado em memória incompleto.
+// Faz upsert das abas atuais primeiro e só then remove as que não existem mais,
+// pra nunca deixar a tabela momentaneamente vazia se algum passo falhar.
+async function saveClientAnalyses(clientKey) {
+  if (!clientKey) return;
 
-  await supabaseClient.from('client_analyses').delete().in('client_slug', slugs);
+  const currentList = clientAnalyses[clientKey] || [];
+  const rows = currentList.map((a, i) => ({
+    client_slug: clientKey,
+    analysis_id: a.id,
+    name: a.name,
+    position: i
+  }));
 
-  const rows = [];
-  slugs.forEach(slug => {
-    (clientAnalyses[slug] || []).forEach((a, i) => {
-      rows.push({ client_slug: slug, analysis_id: a.id, name: a.name, position: i });
-    });
-  });
+  if (rows.length) {
+    const { error: upsertError } = await supabaseClient
+      .from('client_analyses')
+      .upsert(rows, { onConflict: 'client_slug,analysis_id' });
+    if (upsertError) {
+      console.error('Erro ao salvar análises do cliente', clientKey, upsertError);
+      return; // não prossegue para o delete se o upsert falhou
+    }
+  }
 
-  if (rows.length) await supabaseClient.from('client_analyses').insert(rows);
+  const currentIds = currentList.map(a => a.id);
+  let deleteQuery = supabaseClient.from('client_analyses').delete().eq('client_slug', clientKey);
+  if (currentIds.length) {
+    deleteQuery = deleteQuery.not('analysis_id', 'in', `(${currentIds.join(',')})`);
+  }
+  const { error: deleteError } = await deleteQuery;
+  if (deleteError) console.error('Erro ao remover análises antigas do cliente', clientKey, deleteError);
 }
 
 function renderClientSidebar(clientKey) {
@@ -707,7 +726,7 @@ function renameAnalysisInline(clientKey, analysisId) {
       if (ana) {
         const oldName = ana.name;
         ana.name = newName;
-        saveClientAnalyses();
+        saveClientAnalyses(clientKey);
 
         const clientName = clientNameFromSlug(clientKey);
 
@@ -739,15 +758,16 @@ function deleteAnalysis(clientKey, analysisId) {
   const index = list.findIndex(a => a.id === analysisId);
   if (index !== -1) {
     const deleted = list.splice(index, 1)[0];
-    saveClientAnalyses();
+    saveClientAnalyses(clientKey);
 
     const clientName = clientNameFromSlug(clientKey);
 
     if (currentClient === clientName && currentAnalysis === deleted.name) {
       selectAnalysis(clientName, 'Visão geral', 'visao');
-    } else {
-      renderClientSidebar(clientKey);
     }
+    // Sempre redesenha a lista da sidebar, senão a aba excluída continua
+    // aparecendo visualmente mesmo depois de removida dos dados.
+    renderClientSidebar(clientKey);
   }
 }
 
@@ -761,7 +781,7 @@ function addNewAnalysisPrompt(clientKey) {
       clientAnalyses[clientKey] = [];
     }
     clientAnalyses[clientKey].push({ id, name: cleanName });
-    saveClientAnalyses();
+    saveClientAnalyses(clientKey);
     renderClientSidebar(clientKey);
 
     const clientName = clientNameFromSlug(clientKey);
