@@ -201,9 +201,22 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows) {
       investimento: formatCurrencyThousands(totalInvest),
       receita: formatCurrencyThousands(totalRevenue),
       conversao: `${conversaoPct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`,
-      cpl: formatCurrency(cpl),
-      cpa: formatCurrency(cpa),
+      cpl: totalLeads > 0 ? formatCurrency(cpl) : '—',
+      cpa: totalConvs > 0 ? formatCurrency(cpa) : '—',
       roi: `${Math.round(roi)}%`
+    },
+    // Valores numéricos "crus" (não formatados) pra qualquer função que
+    // precise recalcular sem ter que reparsear texto formatado — evita
+    // arredondamento em cascata e denominador errado (ex: CPL usando
+    // impressões em vez de leads).
+    raw: {
+      invest: totalInvest,
+      revenue: totalRevenue,
+      leads: totalLeads,
+      impressions: totalImpress,
+      clicks: totalClicks,
+      pageViews: totalPageViews,
+      conversions: totalConvs
     },
     updates: [
       { source: 'Planilha importada', time: importedAt, status: 'Atualizado', statusClass: 'healthy', obs: `${campaigns.length} linha(s) de campanha, ${leadsRows.length} lead(s)/venda(s) importados.` }
@@ -268,16 +281,18 @@ async function refreshAgencyPeriodDataFromReal() {
   const quarterStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
 
   function aggregate(rows) {
-    let invest = 0, impress = 0, clicks = 0, pageViews = 0, convs = 0, revenue = 0;
+    let invest = 0, impress = 0, clicks = 0, pageViews = 0, leads = 0, convs = 0, revenue = 0;
     rows.forEach(c => {
       invest += Number(c.invest) || 0;
       impress += Number(c.impressions) || 0;
       clicks += Number(c.clicks) || 0;
       pageViews += Number(c.page_views) || 0;
+      leads += Number(c.leads) || 0;
       convs += Number(c.conversions) || 0;
       revenue += Number(c.revenue) || 0;
     });
     const conv = clicks > 0 ? (convs / clicks) * 100 : 0;
+    const cpl = leads > 0 ? invest / leads : 0;
     const cpa = convs > 0 ? invest / convs : 0;
     const roi = invest > 0 ? ((revenue - invest) / invest) * 100 : 0;
     const trendLabel = rows.length > 0 ? '■ Dados importados' : '— Sem dados importados';
@@ -287,9 +302,9 @@ async function refreshAgencyPeriodDataFromReal() {
       receita: formatCurrency(revenue),
       trendReceita: trendLabel,
       conversao: `${conv.toFixed(1)}%`,
-      cpl: formatCurrency(cpa),
-      trendCpl: rows.length > 0 ? '■ Estável' : '— Sem dados',
-      cpa: formatCurrency(cpa),
+      cpl: leads > 0 ? formatCurrency(cpl) : '—',
+      trendCpl: leads > 0 ? '■ Estável' : '— Sem leads',
+      cpa: convs > 0 ? formatCurrency(cpa) : '—',
       roi: `${Math.round(roi)}%`,
       trendRoi: trendLabel,
       funnel: [formatNumber(impress), formatNumber(clicks), formatNumber(pageViews), formatNumber(convs)],
@@ -2067,52 +2082,94 @@ function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
   const diffTime = Math.abs(endDate - startDate);
   const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   const factor = Math.min(1.0, diffDays / 31);
-  
+
   const formattedPeriod = `${formatDate(startDate)} - ${formatDate(endDate)}`;
-  
+
   const metaEl = document.getElementById('c-meta');
   if (metaEl) {
     const segment = metaEl.innerText.split('·')[0].trim();
     metaEl.innerText = `${segment} · ${formattedPeriod}`;
   }
-  
+
   const clientData = clientDetailedData[currentClient];
   if (!clientData) return;
-  
+
+  // Cliente com dado real importado: usa os números crus (sem reparsear
+  // texto formatado), com CPL = investimento / leads sempre, nunca
+  // impressões — e "—" só quando não há lead nenhum.
+  if (clientData.raw) {
+    const raw = clientData.raw;
+    const currentInvest = raw.invest * factor;
+    const currentReceita = raw.revenue * factor;
+    const currentLeads = raw.leads * factor;
+    const currentClicks = raw.clicks * factor;
+    const currentConvs = raw.conversions * factor;
+    const currentImpress = raw.impressions * factor;
+    const currentPageViews = raw.pageViews * factor;
+
+    document.getElementById('c-num-investimento').innerText = formatCurrencyThousands(currentInvest);
+    document.getElementById('c-num-receita').innerText = formatCurrencyThousands(currentReceita);
+
+    document.getElementById('c-funnel-val-1').innerText = Math.round(currentImpress).toLocaleString('pt-BR');
+    document.getElementById('c-funnel-val-2').innerText = Math.round(currentClicks).toLocaleString('pt-BR');
+    document.getElementById('c-funnel-val-3').innerText = Math.round(currentPageViews).toLocaleString('pt-BR');
+    document.getElementById('c-funnel-val-4').innerText = Math.round(currentConvs).toLocaleString('pt-BR');
+
+    const cplVal = currentLeads > 0 ? currentInvest / currentLeads : 0;
+    const cpaVal = currentConvs > 0 ? currentInvest / currentConvs : 0;
+
+    document.getElementById('c-num-cpl').innerText = currentLeads > 0 ? formatCurrency(cplVal) : '—';
+    document.getElementById('c-num-cpa').innerText = currentConvs > 0 ? formatCurrency(cpaVal) : '—';
+
+    if (currentClient === "Volks B2B") {
+      document.getElementById('c-roi-title').innerText = "ROAS";
+      const roasVal = currentInvest > 0 ? (currentReceita / currentInvest).toFixed(1) : '0.0';
+      document.getElementById('c-num-roi').innerText = `${roasVal}x`;
+    } else {
+      document.getElementById('c-roi-title').innerText = "ROI";
+      const roiVal = currentInvest > 0 ? Math.round(((currentReceita - currentInvest) / currentInvest) * 100) : 0;
+      document.getElementById('c-num-roi').innerText = `${roiVal}%`;
+    }
+
+    const convVal = currentClicks > 0 ? ((currentConvs / currentClicks) * 100).toFixed(1) : '0.0';
+    document.getElementById('c-num-conversao').innerText = `${convVal}%`;
+    return;
+  }
+
+  // Fallback (sem "raw" — dado fictício de demonstração antigo)
   const getVal = (str) => {
     if (!str) return 0;
     return parseInt(str.replace(/\./g, '').replace(/[^0-9]/g, ''));
   };
-  
+
   const investBase = getVal(clientData.metrics.investimento);
   const receitaBase = getVal(clientData.metrics.receita);
-  
+
   const currentInvest = Math.round(investBase * factor);
   const currentReceita = Math.round(receitaBase * factor);
-  
+
   document.getElementById('c-num-investimento').innerText = `R$${currentInvest}k`;
   document.getElementById('c-num-receita').innerText = `R$${currentReceita}k`;
-  
+
   const f1 = Math.round(getVal(clientData.funnel[0]) * factor);
   const f2 = Math.round(getVal(clientData.funnel[1]) * factor);
   const f3 = Math.round(getVal(clientData.funnel[2]) * factor);
   const f4 = Math.round(getVal(clientData.funnel[3]) * factor);
-  
+
   document.getElementById('c-funnel-val-1').innerText = f1.toLocaleString('pt-BR');
   document.getElementById('c-funnel-val-2').innerText = f2.toLocaleString('pt-BR');
   document.getElementById('c-funnel-val-3').innerText = f3.toLocaleString('pt-BR');
   document.getElementById('c-funnel-val-4').innerText = f4.toLocaleString('pt-BR');
 
-  // Recalcular CPL, CPA e ROI/ROAS
   const investVal = currentInvest * 1000;
   const receitaVal = currentReceita * 1000;
-  
+
   const cplVal = f1 > 0 ? Math.round(investVal / f1) : 0;
   const cpaVal = f4 > 0 ? Math.round(investVal / f4) : 0;
-  
+
   document.getElementById('c-num-cpl').innerText = cplVal > 0 ? `R$${cplVal}` : '—';
   document.getElementById('c-num-cpa').innerText = cpaVal > 0 ? `R$${cpaVal}` : '—';
-  
+
   if (currentClient === "Volks B2B") {
     document.getElementById('c-roi-title').innerText = "ROAS";
     const roasVal = currentInvest > 0 ? (receitaVal / investVal).toFixed(1) : '0.0';
@@ -2122,7 +2179,7 @@ function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
     const roiVal = currentInvest > 0 ? Math.round((receitaVal / investVal) * 100) : 0;
     document.getElementById('c-num-roi').innerText = roiVal > 0 ? `${roiVal}%` : '0%';
   }
-  
+
   const convVal = f1 > 0 ? ((f4 / f1) * 100).toFixed(1) : '0.0';
   document.getElementById('c-num-conversao').innerText = `${convVal}%`;
 }
