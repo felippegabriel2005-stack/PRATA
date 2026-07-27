@@ -708,6 +708,8 @@ async function showDashboardPai() {
   if (headerCountEl) headerCountEl.innerText = `${allClients.length} cliente${allClients.length === 1 ? '' : 's'} ativo${allClients.length === 1 ? '' : 's'}`;
 
   renderAttentionCards();
+  renderMrrBreakdown();
+  renderHealthSection();
 
   // Atualiza valores do Dashboard Pai com base no período atual
   updateDashboardPaiValues(agencyPeriodData[currentPeriod]);
@@ -718,17 +720,22 @@ async function showDashboardPai() {
 function renderAttentionCards() {
   const section = document.getElementById('attention-section');
   const grid = document.getElementById('attention-grid');
+  const tableSection = document.getElementById('attention-table-section');
+  const tableBody = document.getElementById('attention-table-body');
   if (!section || !grid) return;
 
   const flagged = allClients.filter(c => c.status === 'attention' || c.status === 'critical');
 
   if (flagged.length === 0) {
     section.style.display = 'none';
+    if (tableSection) tableSection.style.display = 'none';
     return;
   }
 
   section.style.display = 'block';
   grid.innerHTML = '';
+  if (tableSection) tableSection.style.display = 'block';
+  if (tableBody) tableBody.innerHTML = '';
 
   flagged.forEach(c => {
     const isCritical = c.status === 'critical';
@@ -746,7 +753,124 @@ function renderAttentionCards() {
       </div>
     `;
     grid.appendChild(card);
+
+    if (tableBody) {
+      const row = document.createElement('tr');
+      row.style.cursor = 'pointer';
+      row.onclick = () => selectClient(c.name);
+      row.innerHTML = `
+        <td class="table-client-cell">
+          <span class="status-dot ${isCritical ? 'critical' : 'attention'}"></span>
+          <span>${c.name}</span>
+        </td>
+        <td><span class="table-badge ${isCritical ? 'critical' : 'attention'}">${isCritical ? 'Crítico' : 'Atenção'}</span></td>
+        <td>—</td>
+        <td class="table-problem-cell">Status "${isCritical ? 'Crítico' : 'Atenção'}" — revise os dados importados.</td>
+      `;
+      tableBody.appendChild(row);
+    }
   });
+}
+
+// Conta clientes reais por status (Saudável/Atenção/Crítico). Esconde a
+// seção inteira quando não há nenhum cliente cadastrado ainda.
+function renderHealthSection() {
+  const section = document.getElementById('health-section');
+  if (!section) return;
+
+  if (allClients.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  const groups = {
+    healthy: allClients.filter(c => c.status === 'healthy'),
+    attention: allClients.filter(c => c.status === 'attention'),
+    critical: allClients.filter(c => c.status === 'critical')
+  };
+
+  Object.keys(groups).forEach(status => {
+    const list = groups[status];
+    document.getElementById(`health-count-${status}`).innerText = list.length;
+
+    const examplesEl = document.getElementById(`health-examples-${status}`);
+    const names = list.slice(0, 3).map(c => c.name);
+    let html = names.join(', ');
+    if (list.length > 3) html += ` <span class="health-examples-muted">+ ${list.length - 3} mais</span>`;
+    examplesEl.innerHTML = html;
+  });
+}
+
+// Gera o donut de MRR a partir da receita real por cliente (campaign_metrics).
+// Sem faturamento real ainda, esconde a seção inteira em vez de mostrar mock.
+async function renderMrrBreakdown() {
+  const section = document.getElementById('mrr-section');
+  if (!section) return;
+
+  const { data } = await supabaseClient.from('campaign_metrics').select('client_slug, revenue');
+  const rows = data || [];
+
+  const byClient = {};
+  rows.forEach(r => {
+    byClient[r.client_slug] = (byClient[r.client_slug] || 0) + (Number(r.revenue) || 0);
+  });
+
+  const total = Object.values(byClient).reduce((a, b) => a + b, 0);
+
+  if (total <= 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  const donutColors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#f97316'];
+  const sorted = Object.entries(byClient)
+    .map(([slug, revenue]) => ({ slug, name: clientNameFromSlug(slug) || slug, revenue }))
+    .sort((a, b) => b.revenue - a.revenue);
+
+  const top = sorted.slice(0, 5);
+  const rest = sorted.slice(5);
+  const restTotal = rest.reduce((s, c) => s + c.revenue, 0);
+
+  const segments = top.map((c, i) => ({ name: c.name, revenue: c.revenue, color: donutColors[i % donutColors.length] }));
+  if (restTotal > 0) segments.push({ name: `Outros (${rest.length})`, revenue: restTotal, color: '#4b5563' });
+
+  const circumference = 2 * Math.PI * 45;
+  const svg = document.getElementById('mrr-donut-svg');
+  svg.innerHTML = '<circle class="donut-segment-bg" cx="65" cy="65" r="45"></circle>';
+  let cumulative = 0;
+  segments.forEach(seg => {
+    const len = (seg.revenue / total) * circumference;
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('class', 'donut-segment');
+    circle.setAttribute('cx', '65');
+    circle.setAttribute('cy', '65');
+    circle.setAttribute('r', '45');
+    circle.setAttribute('stroke', seg.color);
+    circle.setAttribute('stroke-dasharray', `${len.toFixed(1)} ${(circumference - len).toFixed(1)}`);
+    circle.setAttribute('stroke-dashoffset', `${(-cumulative).toFixed(1)}`);
+    svg.appendChild(circle);
+    cumulative += len;
+  });
+
+  document.getElementById('mrr-total-inner').innerText = formatCurrencyThousands(total);
+  document.getElementById('mrr-total-value').innerText = formatCurrencyThousands(total);
+
+  const legendList = document.getElementById('mrr-legend-list');
+  legendList.innerHTML = segments.map(seg => `
+    <li class="mrr-legend-item">
+      <div class="legend-label-wrapper">
+        <span class="legend-color-indicator" style="background-color: ${seg.color};"></span>
+        <span class="legend-name">${seg.name}</span>
+      </div>
+      <div class="legend-values">
+        <span class="legend-value-cash">${formatCurrencyThousands(seg.revenue)}</span>
+        <span class="legend-value-pct">${Math.round((seg.revenue / total) * 100)}%</span>
+      </div>
+    </li>
+  `).join('');
 }
 
 function formatNumber(valor) {

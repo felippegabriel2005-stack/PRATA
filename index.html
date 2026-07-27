@@ -332,48 +332,42 @@
         </div>
         
         <!-- SAÚDE DA CARTEIRA -->
-        <section class="section-container">
+        <section class="section-container" id="health-section">
           <div class="section-heading-wrapper">
             <h2 class="section-heading">Saúde da carteira</h2>
           </div>
-          
+
           <div class="health-row">
             <!-- Saudáveis -->
             <div class="health-card healthy">
-              <div class="health-number-indicator">12</div>
+              <div class="health-number-indicator" id="health-count-healthy">0</div>
               <div class="health-info">
                 <div class="health-title-group">
                   <span class="health-status-name">Saudáveis</span>
                 </div>
-                <span class="health-examples">
-                  Drex Imóveis, Orion Tech, Nexa Edu <span class="health-examples-muted">+ 9 mais</span>
-                </span>
+                <span class="health-examples" id="health-examples-healthy"></span>
               </div>
             </div>
-            
+
             <!-- Atenção -->
             <div class="health-card attention">
-              <div class="health-number-indicator">4</div>
+              <div class="health-number-indicator" id="health-count-attention">0</div>
               <div class="health-info">
                 <div class="health-title-group">
                   <span class="health-status-name">Atenção</span>
                 </div>
-                <span class="health-examples">
-                  Lumera Saúde, AgroVale, Clínica Prime, Studio Fit
-                </span>
+                <span class="health-examples" id="health-examples-attention"></span>
               </div>
             </div>
-            
+
             <!-- Críticos -->
             <div class="health-card critical">
-              <div class="health-number-indicator">2</div>
+              <div class="health-number-indicator" id="health-count-critical">0</div>
               <div class="health-info">
                 <div class="health-title-group">
                   <span class="health-status-name">Críticos</span>
                 </div>
-                <span class="health-examples">
-                  Volks B2B, RetailMax
-                </span>
+                <span class="health-examples" id="health-examples-critical"></span>
               </div>
             </div>
           </div>
@@ -385,12 +379,12 @@
         </div>
         
         <!-- TABELA & MRR LAYOUT -->
-        <div class="dashboard-footer-layout">
-          
+        <div class="dashboard-footer-layout" id="dashboard-footer-layout">
+
           <!-- TABELA: CLIENTES QUE PRECISAM DE ATENÇÃO -->
-          <section class="table-card">
+          <section class="table-card" id="attention-table-section">
             <h2 class="section-heading">Clientes que precisam de atenção</h2>
-            
+
             <div class="table-wrapper">
               <table class="custom-table">
                 <thead>
@@ -401,157 +395,39 @@
                     <th>Problema Identificado</th>
                   </tr>
                 </thead>
-                <tbody>
-                  <tr onclick="selectClient('Volks B2B')" style="cursor: pointer;">
-                    <td class="table-client-cell">
-                      <span class="status-dot critical"></span>
-                      <span>Volks B2B</span>
-                    </td>
-                    <td><span class="table-badge critical">Crítico</span></td>
-                    <td>Hoje</td>
-                    <td class="table-problem-cell">ROAS 1,9x — abaixo do break-even</td>
-                  </tr>
-                  <tr onclick="alert('RetailMax em desenvolvimento')" style="cursor: pointer;">
-                    <td class="table-client-cell">
-                      <span class="status-dot critical"></span>
-                      <span>RetailMax</span>
-                    </td>
-                    <td><span class="table-badge critical">Crítico</span></td>
-                    <td class="table-date-cell critical-date">11 dias atrás</td>
-                    <td class="table-problem-cell">Dados comerciais desatualizados</td>
-                  </tr>
-                  <tr onclick="selectClient('Lumera Saúde')" style="cursor: pointer;">
-                    <td class="table-client-cell">
-                      <span class="status-dot attention"></span>
-                      <span>Lumera Saúde</span>
-                    </td>
-                    <td><span class="table-badge attention">Atenção</span></td>
-                    <td>Hoje</td>
-                    <td class="table-problem-cell">Qualificação caiu 22% em 3 semanas</td>
-                  </tr>
-                  <tr onclick="alert('AgroVale em desenvolvimento')" style="cursor: pointer;">
-                    <td class="table-client-cell">
-                      <span class="status-dot attention"></span>
-                      <span>AgroVale</span>
-                    </td>
-                    <td><span class="table-badge attention">Atenção</span></td>
-                    <td class="table-date-cell attention-date">8 dias atrás</td>
-                    <td class="table-problem-cell">Dados de vendas desatualizados</td>
-                  </tr>
-                  <tr onclick="alert('Clínica Prime em desenvolvimento')" style="cursor: pointer;">
-                    <td class="table-client-cell">
-                      <span class="status-dot attention"></span>
-                      <span>Clínica Prime</span>
-                    </td>
-                    <td><span class="table-badge attention">Atenção</span></td>
-                    <td>9 dias atrás</td>
-                    <td class="table-problem-cell">Conversão abaixo da média</td>
-                  </tr>
-                  <tr onclick="alert('Studio Fit em desenvolvimento')" style="cursor: pointer;">
-                    <td class="table-client-cell">
-                      <span class="status-dot attention"></span>
-                      <span>Studio Fit</span>
-                    </td>
-                    <td><span class="table-badge attention">Atenção</span></td>
-                    <td>Ontem</td>
-                    <td class="table-problem-cell">CPL subiu 28% vs mês anterior</td>
-                  </tr>
+                <tbody id="attention-table-body">
+                  <!-- Preenchido dinamicamente por renderAttentionCards() -->
                 </tbody>
               </table>
             </div>
           </section>
-          
+
           <!-- CARD MRR / CARTEIRA COMPLETA -->
-          <section class="mrr-card">
+          <section class="mrr-card" id="mrr-section">
             <h2 class="section-heading">MRR — carteira completa</h2>
-            
+
             <div class="mrr-content">
               <!-- Gráfico Donut (SVG Nativo) -->
               <div class="chart-donut-wrapper">
-                <svg width="130" height="130" class="donut-svg" viewBox="0 0 130 130">
+                <svg width="130" height="130" class="donut-svg" viewBox="0 0 130 130" id="mrr-donut-svg">
                   <circle class="donut-segment-bg" cx="65" cy="65" r="45"></circle>
-                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#3b82f6" stroke-dasharray="50.9 282.7" stroke-dashoffset="0"></circle>
-                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#8b5cf6" stroke-dasharray="31.1 282.7" stroke-dashoffset="-50.9"></circle>
-                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#ec4899" stroke-dasharray="25.4 282.7" stroke-dashoffset="-82.0"></circle>
-                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#f59e0b" stroke-dasharray="22.6 282.7" stroke-dashoffset="-107.4"></circle>
-                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#f97316" stroke-dasharray="14.1 282.7" stroke-dashoffset="-130.0"></circle>
-                  <circle class="donut-segment" cx="65" cy="65" r="45" stroke="#4b5563" stroke-dasharray="138.5 282.7" stroke-dashoffset="-144.1"></circle>
                 </svg>
-                
+
                 <div class="chart-inner-text">
                   <span class="chart-inner-label">Total MRR</span>
-                  <span class="chart-inner-value">R$2,84M</span>
+                  <span class="chart-inner-value" id="mrr-total-inner">R$0</span>
                 </div>
               </div>
-              
+
               <!-- Legenda Detalhada -->
-              <ul class="mrr-legend-list">
-                <li class="mrr-legend-item">
-                  <div class="legend-label-wrapper">
-                    <span class="legend-color-indicator" style="background-color: #3b82f6;"></span>
-                    <span class="legend-name">Drex Imóveis</span>
-                  </div>
-                  <div class="legend-values">
-                    <span class="legend-value-cash">R$520k</span>
-                    <span class="legend-value-pct">18%</span>
-                  </div>
-                </li>
-                <li class="mrr-legend-item">
-                  <div class="legend-label-wrapper">
-                    <span class="legend-color-indicator" style="background-color: #8b5cf6;"></span>
-                    <span class="legend-name">Orion Tech</span>
-                  </div>
-                  <div class="legend-values">
-                    <span class="legend-value-cash">R$310k</span>
-                    <span class="legend-value-pct">11%</span>
-                  </div>
-                </li>
-                <li class="mrr-legend-item">
-                  <div class="legend-label-wrapper">
-                    <span class="legend-color-indicator" style="background-color: #ec4899;"></span>
-                    <span class="legend-name">Nexa Edu</span>
-                  </div>
-                  <div class="legend-values">
-                    <span class="legend-value-cash">R$248k</span>
-                    <span class="legend-value-pct">9%</span>
-                  </div>
-                </li>
-                <li class="mrr-legend-item">
-                  <div class="legend-label-wrapper">
-                    <span class="legend-color-indicator" style="background-color: #f59e0b;"></span>
-                    <span class="legend-name">Lumera Saúde</span>
-                  </div>
-                  <div class="legend-values">
-                    <span class="legend-value-cash">R$220k</span>
-                    <span class="legend-value-pct">8%</span>
-                  </div>
-                </li>
-                <li class="mrr-legend-item">
-                  <div class="legend-label-wrapper">
-                    <span class="legend-color-indicator" style="background-color: #f97316;"></span>
-                    <span class="legend-name">AgroVale</span>
-                  </div>
-                  <div class="legend-values">
-                    <span class="legend-value-cash">R$140k</span>
-                    <span class="legend-value-pct">5%</span>
-                  </div>
-                </li>
-                <li class="mrr-legend-item">
-                  <div class="legend-label-wrapper">
-                    <span class="legend-color-indicator" style="background-color: #4b5563;"></span>
-                    <span class="legend-name">Outros (13)</span>
-                  </div>
-                  <div class="legend-values">
-                    <span class="legend-value-cash">R$1,40M</span>
-                    <span class="legend-value-pct">49%</span>
-                  </div>
-                </li>
+              <ul class="mrr-legend-list" id="mrr-legend-list">
+                <!-- Preenchido dinamicamente por renderMrrBreakdown() -->
               </ul>
             </div>
-            
+
             <div class="mrr-total-row">
               <span class="mrr-total-label">Faturamento Total</span>
-              <span class="mrr-total-value">R$2,84M</span>
+              <span class="mrr-total-value" id="mrr-total-value">R$0</span>
             </div>
           </section>
         </div>
