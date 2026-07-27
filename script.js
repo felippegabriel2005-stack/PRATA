@@ -507,6 +507,7 @@ function formatNumber(valor) {
 // Global state for dynamic client analyses
 let clientAnalyses = {};
 let currentAnalysis = "Visão geral";
+let currentAnalysisId = "visao";
 
 const defaultAnalyses = [
   { id: "visao", name: "Visão geral" },
@@ -1068,7 +1069,7 @@ function toggleClientExpand(clientName) {
   }
 }
 
-function selectAnalysis(clientName, analysisName, analysisId) {
+async function selectAnalysis(clientName, analysisName, analysisId) {
   currentClient = clientName;
   currentAnalysis = analysisName;
   const clientKey = clientSlugFromName(clientName);
@@ -1078,6 +1079,7 @@ function selectAnalysis(clientName, analysisName, analysisId) {
     const item = list.find(a => a.name === analysisName);
     analysisId = item ? item.id : 'visao';
   }
+  currentAnalysisId = analysisId;
 
   // Highlight client container
   const allContainers = document.querySelectorAll('.client-container');
@@ -1129,9 +1131,22 @@ function selectAnalysis(clientName, analysisName, analysisId) {
     const viewColab = document.getElementById('view-colaboradores');
     if (viewColab) viewColab.style.display = 'none';
 
-    // Aplica o template de métricas específico desta aba (estrutura + rótulos)
+    // Aplica o template de métricas específico desta aba (estrutura + rótulos),
+    // mas prioriza uma estrutura salva no Supabase caso o usuário já tenha
+    // editado essa aba antes (linha excluída, métrica adicionada, etc.)
     const matrixTemplate = getAnalysisMatrixTemplate(analysisName);
-    conversaoRows = JSON.parse(JSON.stringify(matrixTemplate.rows));
+    const savedRows = await loadMatrixStructure(clientKey, analysisId);
+
+    if (savedRows) {
+      conversaoRows = savedRows;
+    } else {
+      conversaoRows = JSON.parse(JSON.stringify(matrixTemplate.rows));
+      if (matrixTemplate.isCustom) {
+        // Primeira vez que essa aba personalizada é aberta: já salva zerada
+        saveMatrixStructure(clientKey, analysisId, conversaoRows);
+      }
+    }
+
     const matrixTitleEl = document.getElementById('conv-matrix-title');
     if (matrixTitleEl) matrixTitleEl.innerText = matrixTemplate.title;
 
@@ -1899,8 +1914,7 @@ const ANALYSIS_MATRIX_TEMPLATES = {
   }
 };
 
-function getAnalysisMatrixTemplate(analysisName) {
-  // Correspondência exata primeiro (cobre os nomes padrão das abas)
+function matchKnownMatrixTemplate(analysisName) {
   if (ANALYSIS_MATRIX_TEMPLATES[analysisName]) return ANALYSIS_MATRIX_TEMPLATES[analysisName];
 
   // Correspondência por palavra-chave, pra continuar funcionando mesmo se a aba for renomeada
@@ -1913,7 +1927,65 @@ function getAnalysisMatrixTemplate(analysisName) {
   if (name.includes('venda')) return ANALYSIS_MATRIX_TEMPLATES['Vendas'];
   if (name.includes('download') || name.includes('aplicativo') || name.includes('app')) return ANALYSIS_MATRIX_TEMPLATES['Download de aplicativo'];
 
-  return ANALYSIS_MATRIX_TEMPLATES['Conversão'];
+  return null;
+}
+
+// Estrutura em branco (tudo zerado) usada por abas personalizadas/novas que não
+// correspondem a nenhum canal conhecido — ex: "Personalizado" ou qualquer aba
+// criada via "+ Nova análise". Usa os mesmos rótulos da Conversão como ponto de
+// partida, mas com valor fixo "0" em vez de puxar dos cálculos de campanha.
+function buildBlankMatrixRows() {
+  const base = JSON.parse(JSON.stringify(ANALYSIS_MATRIX_TEMPLATES['Conversão'].rows));
+  base.forEach(row => {
+    row.metrics.forEach(m => {
+      if (m.format === 'Moeda') m.value = "R$0,00";
+      else if (m.format === 'Percentual') m.value = "0,0%";
+      else m.value = "0";
+    });
+  });
+  return base;
+}
+
+function getAnalysisMatrixTemplate(analysisName) {
+  const known = matchKnownMatrixTemplate(analysisName);
+  if (known) {
+    return { title: known.title, rows: known.rows, isCustom: false };
+  }
+  return {
+    title: `ANÁLISE DE ${(analysisName || '').toUpperCase()}`,
+    rows: buildBlankMatrixRows(),
+    isCustom: true
+  };
+}
+
+// Persistência da estrutura (linhas/métricas) por cliente + aba de análise no Supabase
+async function loadMatrixStructure(clientSlug, analysisId) {
+  if (!clientSlug || !analysisId) return null;
+  const { data, error } = await supabaseClient
+    .from('analysis_matrix_structures')
+    .select('rows')
+    .eq('client_slug', clientSlug)
+    .eq('analysis_id', analysisId)
+    .maybeSingle();
+  if (error) {
+    console.error('Erro ao carregar estrutura da análise', error);
+    return null;
+  }
+  return data ? data.rows : null;
+}
+
+async function saveMatrixStructure(clientSlug, analysisId, rows) {
+  if (!clientSlug || !analysisId) return;
+  const cleanRows = JSON.parse(JSON.stringify(rows));
+  cleanRows.forEach(row => row.metrics.forEach(m => { delete m.isEditing; }));
+
+  const { error } = await supabaseClient
+    .from('analysis_matrix_structures')
+    .upsert(
+      { client_slug: clientSlug, analysis_id: analysisId, rows: cleanRows, updated_at: new Date().toISOString() },
+      { onConflict: 'client_slug,analysis_id' }
+    );
+  if (error) console.error('Erro ao salvar estrutura da análise', error);
 }
 
 // Fator determinístico que diferencia os números de cada aba (Conversão = 100% do
@@ -2398,7 +2470,8 @@ function saveEstruturaChanges() {
   conversaoRows = JSON.parse(JSON.stringify(tempRows));
   closeEstruturaModal();
   updateConversaoMetrics();
-  showToast("Estrutura da análise de conversão atualizada!");
+  saveMatrixStructure(clientSlugFromName(currentClient), currentAnalysisId, conversaoRows);
+  showToast("Estrutura da análise atualizada!");
 }
 
 // LÓGICA DO CATÁLOGO DE MÉTRICAS
@@ -2902,6 +2975,7 @@ function deleteConversaoRow(rowIndex) {
 
   conversaoRows.splice(rowIndex, 1);
   updateConversaoMetrics();
+  saveMatrixStructure(clientSlugFromName(currentClient), currentAnalysisId, conversaoRows);
   showToast('Linha removida.');
 }
 
