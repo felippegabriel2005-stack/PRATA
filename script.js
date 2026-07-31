@@ -4886,13 +4886,25 @@ function sendAssistMessage() {
   simulateAIResponse(text);
 }
 
+function escapeHtml(str) {
+  return str.toString().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// Formatação leve: escapa HTML (segurança) e converte **negrito**/quebras de
+// linha em tags simples, sem precisar de uma lib de markdown.
+function formatAssistantText(text) {
+  return escapeHtml(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\n/g, '<br>');
+}
+
 function appendMessage(text, sender) {
   const container = document.getElementById('assist-messages-container');
   const wrapper = document.createElement('div');
   wrapper.className = `assist-message ${sender}`;
-  wrapper.innerHTML = `<div class="message-bubble">${text}</div>`;
+  wrapper.innerHTML = `<div class="message-bubble">${formatAssistantText(text)}</div>`;
   container.appendChild(wrapper);
-  
+
   container.scrollTop = container.scrollHeight;
 }
 
@@ -4901,37 +4913,70 @@ function handleSuggestion(suggestionText) {
   simulateAIResponse(suggestionText);
 }
 
-function simulateAIResponse(query) {
+// Monta um resumo compacto dos dados reais atuais (clientes por status,
+// totais da agência, e o cliente em foco se houver) pra IA responder com
+// base no que está realmente importado, sem inventar números.
+function buildAssistantContext() {
+  const lines = [];
+  lines.push(`Total de clientes cadastrados: ${allClients.length}.`);
+
+  if (allClients.length > 0) {
+    const byStatus = { healthy: [], attention: [], critical: [] };
+    allClients.forEach(c => { if (byStatus[c.status]) byStatus[c.status].push(c.name); });
+    if (byStatus.critical.length) lines.push(`Clientes em status CRÍTICO: ${byStatus.critical.join(', ')}.`);
+    if (byStatus.attention.length) lines.push(`Clientes em status ATENÇÃO: ${byStatus.attention.join(', ')}.`);
+    if (byStatus.healthy.length) lines.push(`Clientes em status SAUDÁVEL: ${byStatus.healthy.join(', ')}.`);
+  }
+
+  const agency = agencyPeriodData[currentPeriod];
+  if (agency) {
+    lines.push(`Totais da agência no período "${currentPeriod}": Investimento ${agency.investimento}, Receita ${agency.receita}, Taxa de conversão ${agency.conversao}, CPL ${agency.cpl}, CPA ${agency.cpa}, ROI ${agency.roi}.`);
+  }
+
+  if (currentClient && clientDetailedData[currentClient]) {
+    const d = clientDetailedData[currentClient];
+    lines.push(`Cliente em foco na tela agora: ${currentClient}. Métricas: Investimento ${d.metrics.investimento}, Receita ${d.metrics.receita}, Conversão ${d.metrics.conversao}, CPL ${d.metrics.cpl}, CPA ${d.metrics.cpa}, ROI ${d.metrics.roi}.`);
+    if (Array.isArray(d.insights) && d.insights.length) {
+      lines.push(`Insights já calculados para ${currentClient}: ${d.insights.join(' ')}`);
+    }
+    if (Array.isArray(d.lossReasons) && d.lossReasons.length) {
+      lines.push(`Motivos de perda de ${currentClient}: ${d.lossReasons.map(r => `${r.name} (${r.pct}%)`).join(', ')}.`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+async function simulateAIResponse(query) {
   const container = document.getElementById('assist-messages-container');
   const loadingWrapper = document.createElement('div');
   loadingWrapper.className = 'assist-message assistant loading-bubble';
   loadingWrapper.innerHTML = `<div class="message-bubble">Digitando...</div>`;
   container.appendChild(loadingWrapper);
   container.scrollTop = container.scrollHeight;
-  
-  const responses = {
-    'resumir um cliente': 'Claro! Qual cliente você gostaria de resumir? Atualmente, os clientes que merecem mais atenção são o **Volks B2B** (Crítico - CTR caiu 22% no Google Ads) e o **Lumera Saúde** (Atenção - CPL subiu 15%). O **Drex Imóveis** e o **Orion Tech** estão saudáveis e superando as metas de conversão.',
-    'mostrar principais alertas': 'Aqui estão os principais alertas do momento:\n\n1. 🔴 **Volks B2B**: CTR caiu 22% nas campanhas de conversão do Google Ads. Investimento de R$ 12k com baixo retorno.\n2. 🟡 **Lumera Saúde**: CPL aumentou 15% na campanha de WhatsApp. Foco na revisão de criativos.\n3. 🟡 **AgroVale**: Queda sutil de leads no Meta Ads. Monitorar nos próximos 3 dias.',
-    'gerar resumo para o cliente': 'Gerando resumo de performance executiva...\n\n**Drex Imóveis (Maio 2025)**:\n- Investimento total: R$ 52.000 (Dentro do planejado)\n- Conversões geradas: 320 leads (+12% vs mês anterior)\n- CPA Médio: R$ 162,50\n- ROI Estimado: 4.2x\n\n*Recomendação:* Redirecionar 10% da verba de branding para campanhas de captação no WhatsApp.',
-    'comparar canais': 'Análise comparativa de canais consolidada:\n\n- **Google Ads**: Responsável por 58% das conversões. Canal com menor CPA (médio de R$ 45) e melhor taxa de conversão direta.\n- **Meta Ads (Facebook/Instagram)**: Responsável por 32% das conversões. Excelente para atração inicial e leads de WhatsApp, mas com custo por lead mais instável.\n- **LinkedIn Ads**: Excelente qualidade de lead (B2B), porém o CPA é 3x maior que o Google Ads. Recomendado apenas para nichos específicos de alta receita.',
-    'explicar uma métrica': 'Qual métrica você gostaria que eu explicasse? Aqui estão as principais:\n\n- **CPA (Custo por Aquisição)**: O custo total gasto dividido pelo número de conversões.\n- **CTR (Click-Through Rate)**: Porcentagem de cliques em relação às impressões.\n- **LTV (Lifetime Value)**: O valor total que um cliente gera durante seu ciclo de vida comercial.',
-    'o que merece atenção?': 'Recomendo focar no **Volks B2B** imediatamente. Houve uma perda acentuada de eficiência nas campanhas de pesquisa. Sugiro verificar a concorrência de lances de palavras-chave e a qualidade dos anúncios.'
-  };
-  
-  const normQuery = query.toLowerCase().trim();
-  let aiText = 'Entendi sua pergunta sobre os dados do PRATA. Atualmente, os relatórios indicam estabilidade geral nas contas. Caso queira um aprofundamento em um cliente específico, recomendo filtrar as campanhas ou gerar o Relatório Consolidado.';
-  
-  for (const key in responses) {
-    if (normQuery.includes(key)) {
-      aiText = responses[key];
-      break;
-    }
-  }
-  
-  setTimeout(() => {
+
+  try {
+    const context = buildAssistantContext();
+    const response = await fetch('/api/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: query, context })
+    });
+
+    const data = await response.json().catch(() => ({}));
     loadingWrapper.remove();
-    appendMessage(aiText, 'assistant');
-  }, 1000);
+
+    if (!response.ok) {
+      appendMessage(data.error || 'Não consegui responder agora. Tente novamente em instantes.', 'assistant');
+      return;
+    }
+
+    appendMessage(data.reply || 'Não consegui gerar uma resposta.', 'assistant');
+  } catch (err) {
+    console.error('Erro ao chamar o Assistente PRATA', err);
+    loadingWrapper.remove();
+    appendMessage('Não consegui me conectar ao servidor agora. Verifique sua internet e tente de novo.', 'assistant');
+  }
 }
 
 // ==========================================================================
