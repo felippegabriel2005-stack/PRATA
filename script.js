@@ -68,7 +68,73 @@ function formatCurrencyThousands(val) {
   return `R$${Math.round(val / 1000)}k`;
 }
 
-function buildClientDetailedDataFromReal(campaigns, leadsRows) {
+// Decide o status (healthy/attention/critical) de um cliente a partir dos
+// dados reais — ROI, ausência de conversão apesar de investimento, e
+// comparação com as metas cadastradas na aba "Metas" — em vez de depender
+// de um valor fixo definido na importação/cadastro manual. Também devolve
+// os motivos em texto (reasons), pra IA conseguir explicar exatamente por
+// que aquele cliente está em atenção/crítico quando o usuário perguntar.
+function computeClientStatusFromData(raw, targetsRows) {
+  const reasons = [];
+  let severity = 0; // 0 = saudável, 1 = atenção, 2 = crítico
+
+  if (raw.invest > 0) {
+    const roi = ((raw.revenue - raw.invest) / raw.invest) * 100;
+    if (roi < 0) {
+      reasons.push(`ROI negativo (${Math.round(roi)}%): o investimento de ${formatCurrency(raw.invest)} ainda não voltou em receita.`);
+      severity = Math.max(severity, 2);
+    } else if (roi < 50) {
+      reasons.push(`ROI baixo (${Math.round(roi)}%), abaixo do que se espera de uma campanha saudável.`);
+      severity = Math.max(severity, 1);
+    }
+
+    if (raw.conversions === 0) {
+      reasons.push(`Investimento de ${formatCurrency(raw.invest)} sem nenhuma conversão registrada até agora.`);
+      severity = Math.max(severity, 2);
+    }
+  }
+
+  // Mapeia as chaves de métrica usadas na aba "Metas" (mesmas da matriz de
+  // Análise de Conversão) pros valores reais equivalentes deste cliente.
+  const actualByMetric = {
+    invest: raw.invest,
+    impress: raw.impressions,
+    clicks: raw.clicks,
+    views: raw.pageViews,
+    convs: raw.conversions,
+    cpa: raw.conversions > 0 ? raw.invest / raw.conversions : null,
+    cpc: raw.clicks > 0 ? raw.invest / raw.clicks : null,
+    cpm: raw.impressions > 0 ? (raw.invest / raw.impressions) * 1000 : null,
+    ctr: raw.impressions > 0 ? (raw.clicks / raw.impressions) * 100 : null,
+    convrate: raw.pageViews > 0 ? (raw.conversions / raw.pageViews) * 100 : null
+  };
+
+  (targetsRows || []).forEach(t => {
+    const actual = actualByMetric[t.metric_name];
+    const target = Number(t.target_value);
+    if (actual === null || actual === undefined || !target) return;
+
+    const rule = t.rule || '';
+    let ratio = null;
+    if (rule.includes('Menor')) ratio = actual / target; // acima de 1 é pior
+    else if (rule.includes('Maior')) ratio = target / actual; // acima de 1 é pior
+    if (ratio === null) return;
+
+    const pctOff = Math.round(Math.abs(ratio - 1) * 100);
+    if (ratio > 1.3) {
+      reasons.push(`${t.metric_name.toUpperCase()} está ${pctOff}% fora da meta definida em "${t.objective}".`);
+      severity = Math.max(severity, 2);
+    } else if (ratio > 1.1) {
+      reasons.push(`${t.metric_name.toUpperCase()} está levemente fora da meta definida em "${t.objective}" (${pctOff}%).`);
+      severity = Math.max(severity, 1);
+    }
+  });
+
+  const status = severity === 2 ? 'critical' : severity === 1 ? 'attention' : 'healthy';
+  return { status, reasons };
+}
+
+function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows) {
   let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
   const byPlatform = {};
   const byDate = {};
@@ -190,13 +256,31 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows) {
   const importedAt = new Date().toLocaleString('pt-BR');
   const topSource = leadsSource.slice().sort((a, b) => b.pct - a.pct)[0];
 
+  // Valores numéricos "crus" (não formatados) pra qualquer função que
+  // precise recalcular sem ter que reparsear texto formatado — evita
+  // arredondamento em cascata e denominador errado (ex: CPL usando
+  // impressões em vez de leads).
+  const raw = {
+    invest: totalInvest,
+    revenue: totalRevenue,
+    leads: totalLeads,
+    impressions: totalImpress,
+    clicks: totalClicks,
+    pageViews: totalPageViews,
+    conversions: totalConvs
+  };
+
+  const { status: computedStatus, reasons: statusReasons } = computeClientStatusFromData(raw, targetsRows);
+  const statusLabels = { healthy: 'Saudável', attention: 'Atenção', critical: 'Crítico' };
+
   return {
     segment: '',
     period: 'Dados importados',
     owner: '',
     updated: importedAt,
-    status: 'Saudável',
-    statusClass: 'healthy',
+    status: statusLabels[computedStatus],
+    statusClass: computedStatus,
+    statusReasons,
     metrics: {
       investimento: formatCurrencyThousands(totalInvest),
       receita: formatCurrencyThousands(totalRevenue),
@@ -205,19 +289,7 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows) {
       cpa: totalConvs > 0 ? formatCurrency(cpa) : '—',
       roi: `${Math.round(roi)}%`
     },
-    // Valores numéricos "crus" (não formatados) pra qualquer função que
-    // precise recalcular sem ter que reparsear texto formatado — evita
-    // arredondamento em cascata e denominador errado (ex: CPL usando
-    // impressões em vez de leads).
-    raw: {
-      invest: totalInvest,
-      revenue: totalRevenue,
-      leads: totalLeads,
-      impressions: totalImpress,
-      clicks: totalClicks,
-      pageViews: totalPageViews,
-      conversions: totalConvs
-    },
+    raw,
     updates: [
       { source: 'Planilha importada', time: importedAt, status: 'Atualizado', statusClass: 'healthy', obs: `${campaigns.length} linha(s) de campanha, ${leadsRows.length} lead(s)/venda(s) importados.` }
     ],
@@ -268,8 +340,16 @@ async function refreshClientDetailedDataIfReal(clientName) {
 
   // Sempre monta o dashboard a partir do que existir no banco (zerado se não
   // houver nada ainda) — não usa mais o mock fictício como fallback.
-  const built = buildClientDetailedDataFromReal(campaigns || [], leadsRows || []);
+  const built = buildClientDetailedDataFromReal(campaigns || [], leadsRows || [], targetsRows || []);
   clientDetailedData[clientName] = built;
+
+  // Mantém o status do cliente na sidebar/Dashboard Pai em sincronia com o
+  // que acabou de ser calculado a partir dos dados reais deste cliente.
+  const clientRef = allClients.find(c => c.name === clientName);
+  if (clientRef) {
+    clientRef.status = built.statusClass;
+    clientRef.statusReasons = built.statusReasons;
+  }
 
   // Insights estratégicos por IA: usa cache do Supabase (client_ai_insights) e
   // só chama a OpenAI de novo quando os dados reais do cliente mudaram
@@ -405,11 +485,54 @@ function renderClientInsights(clientName) {
   });
 }
 
+// Recalcula o status de cada cliente em allClients a partir dos dados reais
+// de TODOS eles de uma vez (uma única leitura de campaign_metrics/targets,
+// em vez de uma consulta por cliente). Clientes sem nenhuma campanha
+// importada mantêm o status atual (nada pra analisar ainda).
+function updateClientStatusesFromCampaigns(campaigns, targets) {
+  const byClient = {};
+  campaigns.forEach(c => {
+    if (!byClient[c.client_slug]) {
+      byClient[c.client_slug] = { invest: 0, revenue: 0, impressions: 0, clicks: 0, pageViews: 0, leads: 0, conversions: 0 };
+    }
+    const r = byClient[c.client_slug];
+    r.invest += Number(c.invest) || 0;
+    r.revenue += Number(c.revenue) || 0;
+    r.impressions += Number(c.impressions) || 0;
+    r.clicks += Number(c.clicks) || 0;
+    r.pageViews += Number(c.page_views) || 0;
+    r.leads += Number(c.leads) || 0;
+    r.conversions += Number(c.conversions) || 0;
+  });
+
+  const targetsByClient = {};
+  (targets || []).forEach(t => {
+    if (!targetsByClient[t.client_slug]) targetsByClient[t.client_slug] = [];
+    targetsByClient[t.client_slug].push(t);
+  });
+
+  allClients.forEach(c => {
+    const raw = byClient[c.slug];
+    if (!raw) return;
+    const { status, reasons } = computeClientStatusFromData(raw, targetsByClient[c.slug] || []);
+    c.status = status;
+    c.statusReasons = reasons;
+  });
+}
+
 // Agrega dados reais de TODOS os clientes pro Dashboard Pai (agência). Se não
 // houver nenhum dado importado ainda, mantém agencyPeriodData mockado.
+// Aproveita a mesma leitura de campaign_metrics pra também recalcular o
+// status (healthy/attention/critical) de cada cliente a partir dos dados
+// reais, em vez de depender só do valor gravado na importação/cadastro.
 async function refreshAgencyPeriodDataFromReal() {
-  const { data } = await supabaseClient.from('campaign_metrics').select('*');
+  const [{ data }, { data: targets }] = await Promise.all([
+    supabaseClient.from('campaign_metrics').select('*'),
+    supabaseClient.from('targets').select('*')
+  ]);
   const campaigns = data || [];
+
+  updateClientStatusesFromCampaigns(campaigns, targets || []);
 
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -889,17 +1012,22 @@ function renderAttentionCards() {
 
   flagged.forEach(c => {
     const isCritical = c.status === 'critical';
+    const reasons = Array.isArray(c.statusReasons) ? c.statusReasons : [];
+    const desc = reasons[0] ? escapeHtml(reasons[0]) : `${escapeHtml(c.name)} está com status "${isCritical ? 'Crítico' : 'Atenção'}".`;
+    const impact = reasons[1] ? escapeHtml(reasons[1]) : 'Pergunte ao Assistente PRATA o motivo para mais detalhes.';
+    const problemCell = reasons.length ? escapeHtml(reasons.join(' ')) : `Status "${isCritical ? 'Crítico' : 'Atenção'}" — revise os dados importados.`;
+
     const card = document.createElement('div');
     card.className = `attention-card ${isCritical ? 'critical-indicator' : 'attention-indicator'}`;
     card.onclick = () => selectClient(c.name);
     card.innerHTML = `
       <div class="attention-card-header">
-        <span class="attention-client-name">${c.name}</span>
+        <span class="attention-client-name">${escapeHtml(c.name)}</span>
         <span class="attention-badge ${isCritical ? 'critical' : 'attention'}">${isCritical ? 'Crítico' : 'Atenção'}</span>
       </div>
       <div class="attention-card-body">
-        <span class="attention-desc">${c.name} está com status "${isCritical ? 'Crítico' : 'Atenção'}".</span>
-        <span class="attention-impact">Revise os dados importados desse cliente para mais detalhes.</span>
+        <span class="attention-desc">${desc}</span>
+        <span class="attention-impact">${impact}</span>
       </div>
     `;
     grid.appendChild(card);
@@ -911,11 +1039,11 @@ function renderAttentionCards() {
       row.innerHTML = `
         <td class="table-client-cell">
           <span class="status-dot ${isCritical ? 'critical' : 'attention'}"></span>
-          <span>${c.name}</span>
+          <span>${escapeHtml(c.name)}</span>
         </td>
         <td><span class="table-badge ${isCritical ? 'critical' : 'attention'}">${isCritical ? 'Crítico' : 'Atenção'}</span></td>
         <td>—</td>
-        <td class="table-problem-cell">Status "${isCritical ? 'Crítico' : 'Atenção'}" — revise os dados importados.</td>
+        <td class="table-problem-cell">${problemCell}</td>
       `;
       tableBody.appendChild(row);
     }
@@ -5117,6 +5245,15 @@ function buildAssistantContext() {
     if (byStatus.critical.length) lines.push(`Clientes em status CRÍTICO: ${byStatus.critical.join(', ')}.`);
     if (byStatus.attention.length) lines.push(`Clientes em status ATENÇÃO: ${byStatus.attention.join(', ')}.`);
     if (byStatus.healthy.length) lines.push(`Clientes em status SAUDÁVEL: ${byStatus.healthy.join(', ')}.`);
+
+    // Motivos específicos de cada cliente em atenção/crítico (calculados a
+    // partir dos dados reais: ROI, ausência de conversão, metas não
+    // batidas) — pra IA saber explicar exatamente por que quando perguntado.
+    allClients.forEach(c => {
+      if ((c.status === 'attention' || c.status === 'critical') && Array.isArray(c.statusReasons) && c.statusReasons.length) {
+        lines.push(`Por que ${c.name} está em ${c.status === 'critical' ? 'CRÍTICO' : 'ATENÇÃO'}: ${c.statusReasons.join(' ')}`);
+      }
+    });
   }
 
   const agency = agencyPeriodData[currentPeriod];
