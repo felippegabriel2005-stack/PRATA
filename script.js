@@ -4913,11 +4913,77 @@ function handleSuggestion(suggestionText) {
   simulateAIResponse(suggestionText);
 }
 
-// Monta um resumo compacto dos dados reais atuais (clientes por status,
-// totais da agência, e o cliente em foco se houver) pra IA responder com
-// base no que está realmente importado, sem inventar números.
+// Descobre qual tela o usuário está vendo agora (Dashboard Pai, Dashboard
+// Filho, uma Análise específica, Relatórios, Comercial, Colaboradores) e,
+// quando for uma tela de matriz de métricas (Análise de Conversão etc.),
+// lê os valores exatamente como estão renderizados na tela — assim a IA
+// comenta sobre o que o usuário está realmente vendo, e não só o resumo
+// genérico do cliente.
+function getCurrentScreenContext() {
+  const isVisible = (id) => {
+    const el = document.getElementById(id);
+    return !!el && el.style.display !== 'none';
+  };
+
+  if (isVisible('view-dashboard-conversao')) {
+    const matrixLines = [];
+    const container = document.getElementById('conversao-matrix-container');
+    if (container) {
+      container.querySelectorAll('.matrix-row').forEach(rowEl => {
+        const rowLabel = rowEl.querySelector('.matrix-row-label-cell span');
+        const cellTexts = [];
+        rowEl.querySelectorAll('.matrix-metric-cell').forEach(cell => {
+          const title = cell.querySelector('.card-title');
+          const value = cell.querySelector('.card-value');
+          const meta = cell.querySelector('.card-meta-target-label');
+          if (title && value) {
+            const metaText = meta && meta.innerText.trim() ? ` (${meta.innerText.trim()})` : '';
+            cellTexts.push(`${title.innerText}: ${value.innerText}${metaText}`);
+          }
+        });
+        if (rowLabel && cellTexts.length) {
+          matrixLines.push(`${rowLabel.innerText} — ${cellTexts.join('; ')}`);
+        }
+      });
+    }
+    return {
+      label: `Análise "${currentAnalysis}" do cliente ${currentClient}`,
+      detail: matrixLines.length ? `Valores exibidos nessa tela agora:\n${matrixLines.join('\n')}` : ''
+    };
+  }
+
+  if (isVisible('view-dashboard-filho')) {
+    return { label: `Dashboard do cliente ${currentClient} (visão geral)`, detail: '' };
+  }
+
+  if (isVisible('view-relatorios')) {
+    return { label: 'Relatórios', detail: '' };
+  }
+
+  if (isVisible('view-colaboradores')) {
+    return { label: 'Colaboradores', detail: '' };
+  }
+
+  const comercialVisivel = ['view-comercial-radar', 'view-comercial-pipeline', 'view-comercial-contatos']
+    .some(id => isVisible(id));
+  if (comercialVisivel) {
+    return { label: 'Comercial (funil de vendas / pipeline)', detail: '' };
+  }
+
+  return { label: 'Dashboard Pai (visão geral da agência, todos os clientes)', detail: '' };
+}
+
+// Monta um resumo compacto dos dados reais atuais (tela atual em detalhe,
+// clientes por status, totais da agência, e o cliente em foco se houver)
+// pra IA responder com base no que está realmente importado e no que o
+// usuário está vendo na tela, sem inventar números.
 function buildAssistantContext() {
   const lines = [];
+
+  const screen = getCurrentScreenContext();
+  lines.push(`Tela em que o usuário está agora: ${screen.label}.`);
+  if (screen.detail) lines.push(screen.detail);
+
   lines.push(`Total de clientes cadastrados: ${allClients.length}.`);
 
   if (allClients.length > 0) {
@@ -4935,7 +5001,7 @@ function buildAssistantContext() {
 
   if (currentClient && clientDetailedData[currentClient]) {
     const d = clientDetailedData[currentClient];
-    lines.push(`Cliente em foco na tela agora: ${currentClient}. Métricas: Investimento ${d.metrics.investimento}, Receita ${d.metrics.receita}, Conversão ${d.metrics.conversao}, CPL ${d.metrics.cpl}, CPA ${d.metrics.cpa}, ROI ${d.metrics.roi}.`);
+    lines.push(`Totais gerais (dashboard do cliente, todo o período) de ${currentClient}: Investimento ${d.metrics.investimento}, Receita ${d.metrics.receita}, Conversão ${d.metrics.conversao}, CPL ${d.metrics.cpl}, CPA ${d.metrics.cpa}, ROI ${d.metrics.roi}. (Se a tela atual for uma Análise específica com filtro de campanhas/período, use os valores da seção "Valores exibidos nessa tela agora" acima, que são mais precisos para o que o usuário está vendo.)`);
     if (Array.isArray(d.insights) && d.insights.length) {
       lines.push(`Insights já calculados para ${currentClient}: ${d.insights.join(' ')}`);
     }
