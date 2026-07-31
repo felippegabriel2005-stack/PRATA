@@ -2,6 +2,28 @@
 // cliente. Roda no servidor (nunca no navegador) para manter a OPENAI_API_KEY
 // fora do código público, igual ao api/assistant.js.
 
+// A IA foi instruída a responder só com um array JSON, mas às vezes ainda
+// embrulha em ```json ... ``` ou devolve texto solto — tenta o caminho
+// estruturado primeiro e cai pra split por linha só como último recurso.
+function parseInsights(raw) {
+  const cleaned = raw.trim().replace(/^```json\s*|^```\s*|```$/g, '').trim();
+
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) {
+      return parsed.map(item => item.toString().trim()).filter(Boolean).slice(0, 5);
+    }
+  } catch (e) {
+    // não veio JSON válido, tenta o fallback abaixo
+  }
+
+  return cleaned
+    .split('\n')
+    .map(line => line.replace(/^[\s\-*•\d.)]+/, '').trim())
+    .filter(line => line.length > 0)
+    .slice(0, 5);
+}
+
 module.exports = async (req, res) => {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Método não permitido.' });
@@ -30,8 +52,11 @@ module.exports = async (req, res) => {
   const systemPrompt = `Você é um analista de marketing digital sênior de uma agência.
 Analise os dados reais do cliente "${clientName}" abaixo e gere de 4 a 5 insights ESTRATÉGICOS — não apenas repita os números já dados, identifique oportunidades de otimização, riscos, gargalos do funil, comparações entre plataformas/campanhas e recomendações de ação concretas.
 Responda em português do Brasil, direto e objetivo.
-Cada insight deve ser UMA frase em UMA linha, sem numeração, sem marcadores (-, *, •) e sem markdown.
+Cada insight deve ser UMA frase curta e autocontida (uma ideia só, não junte várias no mesmo item).
 Baseie-se SOMENTE nos dados fornecidos abaixo; nunca invente números ou nomes.
+
+Responda EXCLUSIVAMENTE com um array JSON válido de 4 a 5 strings, sem nenhum texto antes ou depois, sem markdown e sem crases. Exemplo do formato exato esperado:
+["Primeiro insight aqui.", "Segundo insight aqui.", "Terceiro insight aqui."]
 
 DADOS REAIS DO CLIENTE:
 ${safeContext || 'Sem dados suficientes para análise.'}`;
@@ -66,11 +91,7 @@ ${safeContext || 'Sem dados suficientes para análise.'}`;
       ? data.choices[0].message.content
       : '';
 
-    const insights = raw
-      .split('\n')
-      .map(line => line.replace(/^[\s\-*•\d.)]+/, '').trim())
-      .filter(line => line.length > 0)
-      .slice(0, 5);
+    const insights = parseInsights(raw);
 
     res.status(200).json({ insights });
   } catch (err) {
