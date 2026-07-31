@@ -260,14 +260,149 @@ async function refreshClientDetailedDataIfReal(clientName) {
   if (realClientDataChecked.has(slug)) return;
   realClientDataChecked.add(slug);
 
-  const [{ data: campaigns }, { data: leadsRows }] = await Promise.all([
+  const [{ data: campaigns }, { data: leadsRows }, { data: targetsRows }] = await Promise.all([
     supabaseClient.from('campaign_metrics').select('*').eq('client_slug', slug),
-    supabaseClient.from('leads_sales').select('*').eq('client_slug', slug)
+    supabaseClient.from('leads_sales').select('*').eq('client_slug', slug),
+    supabaseClient.from('targets').select('*').eq('client_slug', slug)
   ]);
 
   // Sempre monta o dashboard a partir do que existir no banco (zerado se não
   // houver nada ainda) — não usa mais o mock fictício como fallback.
-  clientDetailedData[clientName] = buildClientDetailedDataFromReal(campaigns || [], leadsRows || []);
+  const built = buildClientDetailedDataFromReal(campaigns || [], leadsRows || []);
+  clientDetailedData[clientName] = built;
+
+  // Insights estratégicos por IA: usa cache do Supabase (client_ai_insights) e
+  // só chama a OpenAI de novo quando os dados reais do cliente mudaram
+  // (fingerprint diferente) — evita custo/latência a cada visita ao cliente.
+  maybeGenerateStrategicInsights(clientName, slug, campaigns || [], leadsRows || [], targetsRows || [], built);
+}
+
+// Assinatura compacta e determinística dos dados reais de um cliente. Muda
+// sempre que uma reimportação altera valores/quantidade de linhas, e serve
+// pra decidir se o cache de insights estratégicos ainda é válido.
+function computeDataFingerprint(campaigns, leadsRows, targetsRows) {
+  const sum = (arr, key) => arr.reduce((s, r) => s + (Number(r[key]) || 0), 0);
+  return [
+    campaigns.length,
+    leadsRows.length,
+    (targetsRows || []).length,
+    sum(campaigns, 'invest').toFixed(2),
+    sum(campaigns, 'revenue').toFixed(2),
+    sum(campaigns, 'leads').toFixed(2),
+    sum(campaigns, 'conversions').toFixed(2),
+    sum(campaigns, 'impressions').toFixed(2),
+    sum(campaigns, 'clicks').toFixed(2),
+    sum(campaigns, 'page_views').toFixed(2),
+    sum(leadsRows, 'sale_value').toFixed(2)
+  ].join('|');
+}
+
+// Monta um resumo rico dos dados reais de UM cliente (totais, plataformas,
+// campanhas de destaque, evolução semanal, metas e motivos de perda) pra
+// alimentar a IA na geração de insights estratégicos — vai além do que os
+// cards já mostram, permitindo comparações e recomendações de verdade.
+function buildStrategicInsightsContext(clientName, built, campaigns, leadsRows, targetsRows) {
+  const lines = [];
+  lines.push(`Cliente: ${clientName}.`);
+  lines.push(`Resumo geral (todo o período importado): Investimento ${formatCurrency(built.raw.invest)}, Receita ${formatCurrency(built.raw.revenue)}, ROI ${built.metrics.roi}, Leads ${built.raw.leads}, Conversões ${built.raw.conversions}, Taxa de conversão ${built.metrics.conversao}, CPL ${built.metrics.cpl}, CPA ${built.metrics.cpa}.`);
+
+  if (built.leadsSource && built.leadsSource.length) {
+    lines.push(`Distribuição por plataforma: ${built.leadsSource.map(s => `${s.name} (${s.pct}% dos leads)`).join(', ')}.`);
+  }
+
+  if (built.campaigns && built.campaigns.length) {
+    const topInvest = [...built.campaigns].sort((a, b) => b.invest - a.invest).slice(0, 3);
+    lines.push(`Top campanhas por investimento: ${topInvest.map(c => `${c.name} (${c.platform}): investimento ${formatCurrency(c.invest)}, CTR ${c.ctr}%, CPA ${c.cpa > 0 ? formatCurrency(c.cpa) : '—'}`).join('; ')}.`);
+
+    const withCpa = built.campaigns.filter(c => c.convs > 0);
+    if (withCpa.length > 1) {
+      const worstCpa = [...withCpa].sort((a, b) => b.cpa - a.cpa).slice(0, 2);
+      lines.push(`Campanhas com maior custo por conversão (candidatas a otimização): ${worstCpa.map(c => `${c.name} (${c.platform}): CPA ${formatCurrency(c.cpa)}`).join('; ')}.`);
+    }
+  }
+
+  if (built.evolution && built.evolution.length) {
+    lines.push(`Evolução de investimento nas últimas semanas: ${built.evolution.map(e => `${e.label}: ${e.val} (${e.trend})`).join('; ')}.`);
+  }
+
+  if (targetsRows && targetsRows.length) {
+    lines.push(`Metas definidas pelo cliente: ${targetsRows.map(t => `${t.objective} / ${t.metric_name}: meta de ${t.target_value}`).join('; ')}.`);
+  }
+
+  if (built.lossReasons && built.lossReasons.length) {
+    lines.push(`Motivos de perda de leads: ${built.lossReasons.map(r => `${r.name} (${r.pct}%)`).join(', ')}.`);
+  }
+
+  return lines.join('\n');
+}
+
+// Gera (via OpenAI) os insights estratégicos de um cliente e guarda em cache
+// no Supabase, associados ao fingerprint dos dados no momento da geração.
+// Só chama a IA de fato quando não existe cache ainda ou quando os dados
+// mudaram desde a última geração; caso contrário reaproveita o cache.
+async function maybeGenerateStrategicInsights(clientName, slug, campaigns, leadsRows, targetsRows, built) {
+  if (!campaigns.length) return;
+
+  const fingerprint = computeDataFingerprint(campaigns, leadsRows, targetsRows);
+
+  const { data: cached } = await supabaseClient
+    .from('client_ai_insights')
+    .select('insights, data_fingerprint')
+    .eq('client_slug', slug)
+    .maybeSingle();
+
+  if (cached && cached.data_fingerprint === fingerprint) {
+    if (Array.isArray(cached.insights) && cached.insights.length) {
+      built.insights = cached.insights;
+      if (currentClient === clientName) renderClientInsights(clientName);
+    }
+    return;
+  }
+
+  try {
+    const context = buildStrategicInsightsContext(clientName, built, campaigns, leadsRows, targetsRows);
+    const response = await fetch('/api/insights', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientName, context })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !Array.isArray(data.insights) || !data.insights.length) return;
+
+    built.insights = data.insights;
+    if (currentClient === clientName) renderClientInsights(clientName);
+
+    await supabaseClient.from('client_ai_insights').upsert({
+      client_slug: slug,
+      insights: data.insights,
+      data_fingerprint: fingerprint,
+      generated_at: new Date().toISOString()
+    });
+  } catch (err) {
+    console.error('Erro ao gerar insights estratégicos', err);
+  }
+}
+
+// Renderiza a lista de insights do cliente atualmente ativo no card
+// "Insights de IA" do Dashboard Filho — reaproveitada tanto na abertura
+// inicial do cliente quanto quando um insight estratégico chega em segundo
+// plano (após o cache ser preenchido/atualizado).
+function renderClientInsights(clientName) {
+  const insightsUl = document.getElementById('c-insights-list');
+  if (!insightsUl) return;
+  const data = clientDetailedData[clientName];
+  if (!data) return;
+
+  insightsUl.innerHTML = '';
+  const activeInsights = (currentAnalysis && currentAnalysis !== 'Visão geral') ?
+                          getAnalysisInsights(clientName, currentAnalysis) :
+                          data.insights;
+
+  activeInsights.forEach(insight => {
+    const li = document.createElement('li');
+    li.innerText = insight;
+    insightsUl.appendChild(li);
+  });
 }
 
 // Agrega dados reais de TODOS os clientes pro Dashboard Pai (agência). Se não
@@ -3783,17 +3918,7 @@ async function selectClient(clientName) {
   });
 
   // Insights de IA
-  const insightsUl = document.getElementById('c-insights-list');
-  insightsUl.innerHTML = '';
-  const activeInsights = (currentAnalysis && currentAnalysis !== 'Visão geral') ?
-                          getAnalysisInsights(clientName, currentAnalysis) :
-                          data.insights;
-                          
-  activeInsights.forEach(insight => {
-    const li = document.createElement('li');
-    li.innerText = insight;
-    insightsUl.appendChild(li);
-  });
+  renderClientInsights(clientName);
 
   // Funil do Cliente
   let funnelVals = [...data.funnel];
