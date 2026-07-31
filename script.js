@@ -1249,10 +1249,17 @@ function showNewAnalysisPicker(e, clientKey) {
 
   const menu = document.createElement('div');
   menu.className = 'custom-context-menu';
+  menu.style.minWidth = '210px';
+  menu.style.whiteSpace = 'nowrap';
 
   const rect = e.target.getBoundingClientRect();
+  const menuWidth = 210;
+  let left = rect.left + window.scrollX;
+  if (left + menuWidth > window.innerWidth - 10) {
+    left = window.innerWidth - menuWidth - 10;
+  }
   menu.style.top = `${rect.bottom + window.scrollY + 4}px`;
-  menu.style.left = `${rect.left + window.scrollX - 90}px`;
+  menu.style.left = `${left}px`;
 
   availableDefaults.forEach(a => {
     const item = document.createElement('div');
