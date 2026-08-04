@@ -2840,17 +2840,18 @@ function matchKnownMatrixTemplate(analysisName) {
   return null;
 }
 
-// Estrutura em branco (tudo zerado) usada por abas personalizadas/novas que não
+// Estrutura em branco usada por abas personalizadas/novas que não
 // correspondem a nenhum canal conhecido — ex: "Personalizado" ou qualquer aba
-// criada via "+ Nova análise". Usa os mesmos rótulos da Conversão como ponto de
-// partida, mas com valor fixo "0" em vez de puxar dos cálculos de campanha.
+// criada via "+ Nova análise". Usa os mesmos rótulos e keys da Conversão como
+// ponto de partida, com value vazio — igual métrica adicionada pelo catálogo
+// (addMetricToActiveRow) — pra puxar os dados reais de campanha pela key em
+// vez de ficar travada num "0" fixo (renderConversaoMatrix só usa a key/dado
+// dinâmico quando value está vazio).
 function buildBlankMatrixRows() {
   const base = JSON.parse(JSON.stringify(ANALYSIS_MATRIX_TEMPLATES['Conversão'].rows));
   base.forEach(row => {
     row.metrics.forEach(m => {
-      if (m.format === 'Moeda') m.value = "R$0,00";
-      else if (m.format === 'Percentual') m.value = "0,0%";
-      else m.value = "0";
+      m.value = '';
     });
   });
   return base;
