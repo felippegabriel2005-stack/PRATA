@@ -7,7 +7,11 @@
 // ==========================================================================
 const SUPABASE_URL = 'https://ldcpwadnvuotacwnkcop.supabase.co';
 const SUPABASE_ANON_KEY = 'sb_publishable_3eLKeEjjegJgKLf1bUHQ6Q_GQPJ_5v6';
-const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// persistSession: false — o usuário pede login sempre que abre/recarrega o
+// PRATA, em vez de continuar logado indefinidamente entre sessões.
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: false }
+});
 
 // Lista de clientes carregada do Supabase (tabela `clients`)
 let allClients = [];
@@ -2086,10 +2090,34 @@ function togglePeriodDropdown(prefix, event) {
   }
 }
 
+// Abre/fecha o menu do avatar (FG) no header — mostra a opção "Sair".
+// Um único dropdown compartilhado, reposicionado embaixo do avatar clicado.
+function toggleUserMenu(event) {
+  event.stopPropagation();
+  const menu = document.getElementById('user-menu-dropdown');
+  if (!menu) return;
+
+  if (menu.style.display === 'block') {
+    menu.style.display = 'none';
+    return;
+  }
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  menu.style.top = `${rect.bottom + 6}px`;
+  menu.style.left = `${Math.max(10, rect.right - 140)}px`;
+  menu.style.display = 'block';
+}
+
 // Event listener global para fechar dropdowns ao clicar fora
 document.addEventListener('click', function(event) {
   const path = event.composedPath();
-  
+
+  // Fecha o menu do avatar (FG) se clicado fora dele
+  const userMenu = document.getElementById('user-menu-dropdown');
+  if (userMenu && userMenu.style.display !== 'none' && !path.includes(userMenu)) {
+    userMenu.style.display = 'none';
+  }
+
   // Fecha o menu de três pontos da Análise de Conversão se clicado fora
   const convThreeDropdown = document.getElementById('conv-three-point-dropdown');
   const convThreeBtn = document.getElementById('conv-menu-trigger');
@@ -4646,9 +4674,11 @@ function renderColaboradores(list) {
 function openColaboradorModal(id) {
   const modal = document.getElementById('colaborador-modal');
   modal.style.display = 'flex';
-  
+  const passwordGroup = document.getElementById('colab-password-group');
+  const passwordInput = document.getElementById('colab-password');
+
   if (id) {
-    // Editar Colaborador
+    // Editar Colaborador — não mexe em senha/login por aqui
     const colab = collaboratorsList.find(c => c.id === id);
     if (!colab) return;
 
@@ -4657,11 +4687,15 @@ function openColaboradorModal(id) {
     document.getElementById('colab-name').value = colab.name;
     document.getElementById('colab-role').value = colab.role;
     document.getElementById('colab-email').value = colab.email;
+    if (passwordGroup) passwordGroup.style.display = 'none';
+    if (passwordInput) passwordInput.required = false;
   } else {
-    // Novo Colaborador
+    // Novo Colaborador — precisa definir e-mail e senha de acesso
     document.getElementById('modal-title-text').innerText = "Novo Colaborador";
     document.getElementById('colaborador-form').reset();
     document.getElementById('colab-id').value = '';
+    if (passwordGroup) passwordGroup.style.display = 'block';
+    if (passwordInput) passwordInput.required = true;
   }
 }
 
@@ -4678,7 +4712,7 @@ async function saveColaborador(event) {
   const email = document.getElementById('colab-email').value;
 
   if (idVal) {
-    // Atualiza existente
+    // Atualiza existente (sem mexer em senha/login por aqui)
     const colab = collaboratorsList.find(c => c.id === idVal);
     if (colab) {
       colab.name = name;
@@ -4686,29 +4720,53 @@ async function saveColaborador(event) {
       colab.email = email;
     }
     await supabaseClient.from('collaborators').update({ name, role, email }).eq('id', idVal);
-  } else {
-    // Cria novo
-    const { data, error } = await supabaseClient
-      .from('collaborators')
-      .insert({ name, role, email, status: 'Ativo' })
-      .select()
-      .single();
-    if (error) {
-      console.error('Erro ao criar colaborador', error);
-    } else {
-      collaboratorsList.push({
-        id: data.id,
-        name: data.name,
-        role: data.role,
-        email: data.email,
-        status: data.status,
-        statusClass: "active"
-      });
-    }
+    closeColaboradorModal();
+    renderColaboradores(collaboratorsList);
+    return;
   }
 
-  closeColaboradorModal();
-  renderColaboradores(collaboratorsList);
+  // Cria novo colaborador COM acesso de login ao PRATA (e-mail + senha) —
+  // precisa passar pelo servidor porque criar um usuário no Supabase Auth
+  // exige a service_role key, que nunca pode ir pro navegador.
+  const password = document.getElementById('colab-password').value;
+  if (!password || password.length < 6) {
+    showToast('Defina uma senha de acesso com pelo menos 6 caracteres.');
+    return;
+  }
+
+  const submitBtn = document.querySelector('#colaborador-form .form-btn-primary');
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.innerText = 'Criando...'; }
+
+  try {
+    const response = await fetch('/api/create-collaborator', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, role, email, password })
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.error('Erro ao criar colaborador', data);
+      showToast(data.error || 'Não foi possível criar o colaborador.');
+      return;
+    }
+
+    const created = data.collaborator;
+    collaboratorsList.push({
+      id: created.id,
+      name: created.name,
+      role: created.role,
+      email: created.email,
+      status: created.status,
+      statusClass: "active"
+    });
+
+    closeColaboradorModal();
+    renderColaboradores(collaboratorsList);
+    showToast(`${name} já pode entrar no PRATA com o e-mail e senha cadastrados! 🔐`);
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.innerText = 'Salvar'; }
+  }
 }
 
 async function toggleSuspend(id) {
@@ -7972,7 +8030,58 @@ document.addEventListener('click', function (e) {
 });
 
 // Inicializa a Tela na carga inicial e sincroniza o tema
-window.onload = async function() {
+// --------------------------------------------------
+// Login (Supabase Auth)
+// --------------------------------------------------
+
+async function handleLogin(event) {
+  event.preventDefault();
+
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  const submitBtn = document.getElementById('login-submit-btn');
+
+  errorEl.style.display = 'none';
+  submitBtn.disabled = true;
+  submitBtn.innerText = 'Entrando...';
+
+  const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  submitBtn.disabled = false;
+  submitBtn.innerText = 'Entrar';
+
+  if (error) {
+    console.error('Erro de login', error);
+    errorEl.innerText = 'E-mail ou senha incorretos.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  showAppAfterLogin();
+}
+
+async function handleLogout() {
+  await supabaseClient.auth.signOut();
+  window.location.reload();
+}
+
+function showAppAfterLogin() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-container').style.display = 'flex';
+  initApp();
+}
+
+function showLoginScreen() {
+  document.getElementById('app-container').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('login-form').reset();
+}
+
+// Inicializa os dados e telas do PRATA — só roda depois de confirmar que
+// existe uma sessão autenticada (chamada tanto no load com sessão já ativa
+// quanto logo após um login bem-sucedido).
+async function initApp() {
   syncThemeOnLoad();
 
   allClients = await fetchClients();
@@ -7986,4 +8095,21 @@ window.onload = async function() {
   allClients.filter(c => c.pinned).forEach(c => renderClientSidebar(c.slug));
 
   showDashboardPai();
+}
+
+window.onload = async function() {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+
+  if (!session) {
+    showLoginScreen();
+    return;
+  }
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-container').style.display = 'flex';
+  await initApp();
+
+  supabaseClient.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') showLoginScreen();
+  });
 };
