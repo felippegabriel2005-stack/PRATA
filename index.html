@@ -1613,10 +1613,31 @@
                 </select>
               </div>
             </div>
-            
+
+          </div>
+
+          <!-- Anexos -->
+          <div class="drawer-field-group" style="margin-top: 20px;">
+            <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 6px;">Anexos</label>
+
+            <div id="lead-attachment-dropzone"
+                 style="border: 1px dashed var(--border-color); border-radius: var(--border-radius-sm); padding: 18px 12px; text-align: center; cursor: pointer; transition: var(--transition-fast); background-color: rgba(255,255,255,0.01);"
+                 onclick="document.getElementById('lead-attachment-input').click();"
+                 ondragover="event.preventDefault(); event.stopPropagation(); this.style.borderColor='var(--color-purple)'; this.style.backgroundColor='rgba(139,92,246,0.05)';"
+                 ondragleave="this.style.borderColor='var(--border-color)'; this.style.backgroundColor='rgba(255,255,255,0.01)';"
+                 ondrop="handleAttachmentDrop(event)">
+              <span style="font-size: 20px; display: block; margin-bottom: 6px; opacity: 0.6;">📎</span>
+              <span style="font-size: 11px; color: var(--text-secondary); display: block;">Arraste um arquivo aqui ou clique para escolher</span>
+              <span style="font-size: 9px; color: var(--text-muted); display: block; margin-top: 2px;">Contratos, propostas, prints — até 10MB</span>
+            </div>
+            <input type="file" id="lead-attachment-input" style="display: none;" onchange="handleAttachmentFileInput(event)">
+
+            <ul id="lead-attachments-list" style="list-style: none; margin-top: 10px; display: flex; flex-direction: column; gap: 6px;">
+              <!-- Populated dynamically -->
+            </ul>
           </div>
         </div>
-        
+
         <!-- Drawer Footer -->
         <div class="drawer-footer" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--divider-color); display: flex; justify-content: space-between;">
           <button class="filter-btn" onclick="deleteLeadFromDrawer()" style="background-color: var(--color-red-bg); border-color: var(--color-red-border); color: var(--color-red); font-size: 11px; padding: 8px 16px; height: 32px;">Excluir Lead 🗑️</button>

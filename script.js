@@ -6670,6 +6670,11 @@ function handleColumnDragEnd(e) {
 }
 
 function handleCardDragStart(e, leadId) {
+  // Sem isso, o dragstart do card sobe (bubble) até a coluna, que também tem
+  // seu próprio ondragstart (pro drag-handle ⋮⋮ de reordenar colunas). Como o
+  // alvo não é o drag-handle, esse handler chama preventDefault() no
+  // dragstart e cancela o drag inteiro do card antes mesmo de começar.
+  e.stopPropagation();
   draggedCardId = leadId;
   e.dataTransfer.setData('text/plain', leadId);
   e.target.classList.add('dragging');
@@ -7232,11 +7237,150 @@ function openLeadDetails(leadId, event) {
   });
   
   updateOwnerAvatar(lead.owner || 'felippe.alves');
+  loadLeadAttachments(leadId);
 }
 
 function closeLeadDetailsDrawer() {
   document.getElementById('lead-details-drawer').style.display = 'none';
   currentEditingLeadId = null;
+}
+
+// --------------------------------------------------
+// Anexos do Lead (Supabase Storage + commercial_lead_attachments)
+// --------------------------------------------------
+
+const LEAD_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+
+function handleAttachmentDrop(event) {
+  event.preventDefault();
+  event.stopPropagation();
+  const dropzone = document.getElementById('lead-attachment-dropzone');
+  if (dropzone) {
+    dropzone.style.borderColor = 'var(--border-color)';
+    dropzone.style.backgroundColor = 'rgba(255,255,255,0.01)';
+  }
+  const file = event.dataTransfer.files && event.dataTransfer.files[0];
+  if (file) uploadLeadAttachment(file);
+}
+
+function handleAttachmentFileInput(event) {
+  const file = event.target.files && event.target.files[0];
+  if (file) uploadLeadAttachment(file);
+  event.target.value = '';
+}
+
+async function uploadLeadAttachment(file) {
+  if (!currentEditingLeadId) return;
+
+  if (file.size > LEAD_ATTACHMENT_MAX_BYTES) {
+    showToast('Arquivo muito grande (máximo 10MB). 📎');
+    return;
+  }
+
+  const leadId = currentEditingLeadId;
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+  const storagePath = `${leadId}/${Date.now()}-${safeName}`;
+
+  showToast('Enviando anexo...');
+
+  const { error: uploadError } = await supabaseClient.storage
+    .from('lead-attachments')
+    .upload(storagePath, file, { contentType: file.type || 'application/octet-stream' });
+
+  if (uploadError) {
+    console.error('Erro ao enviar anexo', uploadError);
+    showToast('Não foi possível enviar o anexo. Tente novamente.');
+    return;
+  }
+
+  const { error: dbError } = await supabaseClient.from('commercial_lead_attachments').insert({
+    lead_id: leadId,
+    file_name: file.name,
+    storage_path: storagePath,
+    mime_type: file.type || null,
+    size_bytes: file.size
+  });
+
+  if (dbError) {
+    console.error('Erro ao salvar metadados do anexo', dbError);
+    showToast('Anexo enviado, mas houve um erro ao registrar. Tente recarregar.');
+    return;
+  }
+
+  showToast(`${file.name} anexado! 📎`);
+  if (currentEditingLeadId === leadId) loadLeadAttachments(leadId);
+}
+
+async function loadLeadAttachments(leadId) {
+  const list = document.getElementById('lead-attachments-list');
+  if (!list) return;
+  list.innerHTML = '<li style="font-size: 10px; color: var(--text-muted);">Carregando anexos...</li>';
+
+  const { data, error } = await supabaseClient
+    .from('commercial_lead_attachments')
+    .select('*')
+    .eq('lead_id', leadId)
+    .order('uploaded_at', { ascending: false });
+
+  if (currentEditingLeadId !== leadId) return; // drawer trocou de lead enquanto carregava
+
+  if (error) {
+    console.error('Erro ao carregar anexos', error);
+    list.innerHTML = '<li style="font-size: 10px; color: var(--text-muted);">Não foi possível carregar os anexos.</li>';
+    return;
+  }
+
+  renderLeadAttachmentsList(data || []);
+}
+
+function formatAttachmentSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function renderLeadAttachmentsList(attachments) {
+  const list = document.getElementById('lead-attachments-list');
+  if (!list) return;
+
+  if (attachments.length === 0) {
+    list.innerHTML = '<li style="font-size: 10px; color: var(--text-muted);">Nenhum anexo ainda.</li>';
+    return;
+  }
+
+  list.innerHTML = '';
+  attachments.forEach(att => {
+    const { data: urlData } = supabaseClient.storage.from('lead-attachments').getPublicUrl(att.storage_path);
+    const publicUrl = urlData ? urlData.publicUrl : '#';
+
+    const li = document.createElement('li');
+    li.style.cssText = 'display: flex; align-items: center; justify-content: space-between; gap: 8px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 4px; padding: 6px 10px;';
+    li.innerHTML = `
+      <a href="${escapeHtml(publicUrl)}" target="_blank" rel="noopener" style="font-size: 11px; color: var(--text-primary); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex-grow: 1;" title="${escapeHtml(att.file_name)}">
+        📄 ${escapeHtml(att.file_name)}
+      </a>
+      <span style="font-size: 9px; color: var(--text-muted); flex-shrink: 0;">${formatAttachmentSize(att.size_bytes)}</span>
+      <span onclick="deleteLeadAttachment('${att.id}', '${att.storage_path}')" title="Remover anexo" style="cursor: pointer; color: var(--text-muted); font-size: 12px; flex-shrink: 0;">&times;</span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+async function deleteLeadAttachment(attachmentId, storagePath) {
+  const leadId = currentEditingLeadId;
+
+  await supabaseClient.storage.from('lead-attachments').remove([storagePath]);
+  const { error } = await supabaseClient.from('commercial_lead_attachments').delete().eq('id', attachmentId);
+
+  if (error) {
+    console.error('Erro ao remover anexo', error);
+    showToast('Não foi possível remover o anexo.');
+    return;
+  }
+
+  showToast('Anexo removido.');
+  if (currentEditingLeadId === leadId) loadLeadAttachments(leadId);
 }
 
 function saveLeadDetailField(field, value) {
