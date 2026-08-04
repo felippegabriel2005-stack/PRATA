@@ -1332,14 +1332,14 @@
           <div style="position: relative; flex-grow: 1;">
             <input type="text" id="radar-search-query" placeholder='Ex: "imobiliárias em Campinas", "clínicas em Guarulhos", "APDR drag race"...' style="width: 100%; height: 44px; background-color: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: var(--border-radius-sm); padding: 0 16px; font-size: 13px; font-family: var(--font-family-body);" onkeydown="if(event.key === 'Enter') executeRadarSearch();">
           </div>
-          <button class="pink-btn" style="height: 44px; padding: 0 24px; font-size: 13px; font-weight: 600;" onclick="executeRadarSearch()">Buscar empresas 🔍</button>
+          <button id="radar-search-btn" class="pink-btn" style="height: 44px; padding: 0 24px; font-size: 13px; font-weight: 600;" onclick="executeRadarSearch()">Buscar empresas 🔍</button>
         </div>
 
         <!-- Empty State Placeholder (Visible by default) -->
         <div id="radar-empty-state" style="background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); padding: 60px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 250px; margin-bottom: 20px;">
           <span style="font-size: 32px; margin-bottom: 16px; opacity: 0.6;">📡</span>
           <h3 style="font-size: 14px; font-weight: 700; color: var(--text-primary); font-family: var(--font-family-title); margin-bottom: 6px;">Digite uma empresa, nicho ou cidade para começar.</h3>
-          <p style="font-size: 11px; color: var(--text-secondary); max-width: 420px; line-height: 1.5;">Os leads encontrados poderão ser importados para a etapa "Em abordagem" no Pipeline comercial.</p>
+          <p style="font-size: 11px; color: var(--text-secondary); max-width: 420px; line-height: 1.5;">Os resultados vêm do Google Maps em tempo real. Use o botão ➕ em cada resultado pra salvar no Radar, ou selecione vários para importar direto no Pipeline.</p>
         </div>
 
         <!-- Loading state (Hidden by default) -->
@@ -1347,6 +1347,21 @@
           <div class="loading-spinner" style="border: 3px solid rgba(255,255,255,0.05); border-radius: 50%; border-top: 3px solid #8b5cf6; width: 32px; height: 32px; animation: spin 1s linear infinite; margin-bottom: 16px;"></div>
           <h3 style="font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">Integrando com Google Maps...</h3>
           <p style="font-size: 10px; color: var(--text-secondary);">Buscando locais e qualificando contatos comerciais...</p>
+        </div>
+
+        <!-- No results state (Hidden by default) -->
+        <div id="radar-no-results-state" style="background-color: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--border-radius-md); padding: 60px 20px; text-align: center; display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; margin-bottom: 20px;">
+          <span style="font-size: 28px; margin-bottom: 12px; opacity: 0.6;">🔍</span>
+          <h3 style="font-size: 13px; font-weight: 700; color: var(--text-primary); font-family: var(--font-family-title); margin-bottom: 4px;">Nenhuma empresa encontrada para "<span id="radar-no-results-query"></span>".</h3>
+          <p style="font-size: 11px; color: var(--text-secondary);">Tente um termo mais amplo, como só o nome da cidade ou do segmento.</p>
+        </div>
+
+        <!-- Error state (Hidden by default) -->
+        <div id="radar-error-state" style="background-color: var(--bg-card); border: 1px solid rgba(239,68,68,0.35); border-radius: var(--border-radius-md); padding: 40px 20px; text-align: center; display: none; flex-direction: column; align-items: center; justify-content: center; min-height: 160px; margin-bottom: 20px;">
+          <span style="font-size: 28px; margin-bottom: 12px;">⚠️</span>
+          <h3 style="font-size: 13px; font-weight: 700; color: var(--text-primary); font-family: var(--font-family-title); margin-bottom: 4px;">Não foi possível buscar agora.</h3>
+          <p id="radar-error-message" style="font-size: 11px; color: var(--text-secondary); max-width: 420px; margin-bottom: 14px;">Erro ao consultar o Google Maps.</p>
+          <button class="filter-btn" style="height: 32px; padding: 0 16px; font-size: 11px;" onclick="executeRadarSearch()">Tentar novamente</button>
         </div>
 
         <!-- Results Table (Hidden by default, populated dynamically) -->
@@ -1390,6 +1405,10 @@
                 <!-- Rendered dynamically -->
               </tbody>
             </table>
+          </div>
+
+          <div style="text-align: center; margin-top: 16px;">
+            <button id="radar-load-more-btn" class="filter-btn" style="height: 34px; padding: 0 20px; font-size: 11px; display: none;" onclick="loadMoreRadarResults()">Carregar mais</button>
           </div>
         </div>
       </div>

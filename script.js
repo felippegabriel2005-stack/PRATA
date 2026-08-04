@@ -6331,7 +6331,18 @@ async function saveCommercialState() {
     employees: r.employees,
     revenue: r.revenue,
     decision_maker: r.decisionMaker,
-    mapped: r.mapped
+    mapped: r.mapped,
+    place_id: r.placeId || null,
+    address: r.address || null,
+    phone: r.phone || null,
+    website: r.website || null,
+    rating: r.rating || null,
+    rating_count: r.ratingCount || null,
+    business_status: r.businessStatus || null,
+    open_now: typeof r.openNow === 'boolean' ? r.openNow : null,
+    lat: r.lat || null,
+    lng: r.lng || null,
+    google_maps_url: r.googleMapsUrl || null
   }));
 
   // Sincroniza por completo (mesmo padrão do localStorage: sobrescreve tudo a cada mudança)
@@ -6387,7 +6398,18 @@ async function loadCommercialState() {
         employees: r.employees,
         revenue: r.revenue,
         decisionMaker: r.decision_maker,
-        mapped: r.mapped
+        mapped: r.mapped,
+        placeId: r.place_id || null,
+        address: r.address || null,
+        phone: r.phone || null,
+        website: r.website || null,
+        rating: r.rating || null,
+        ratingCount: r.rating_count || null,
+        businessStatus: r.business_status || null,
+        openNow: r.open_now,
+        lat: r.lat || null,
+        lng: r.lng || null,
+        googleMapsUrl: r.google_maps_url || null
       }))
     : [...DEFAULT_RADAR_COMPANIES];
 }
@@ -6773,6 +6795,9 @@ function filterContactsList(searchQuery) {
 // --------------------------------------------------
 
 let radarSearchResults = [];
+let radarSearchInFlight = false;
+let radarLastQuery = '';
+let radarNextPageToken = null;
 
 function executeRadarSearch() {
   const queryInput = document.getElementById('radar-search-query');
@@ -6782,153 +6807,186 @@ function executeRadarSearch() {
     showToast('Digite uma empresa, nicho ou cidade para buscar! 🔍');
     return;
   }
-  
+  if (radarSearchInFlight) return;
+
+  radarLastQuery = query;
+  radarNextPageToken = null;
+  runRadarSearch(query, null, false);
+}
+
+function loadMoreRadarResults() {
+  if (radarSearchInFlight || !radarNextPageToken) return;
+  runRadarSearch(radarLastQuery, radarNextPageToken, true);
+}
+
+// Faz a busca real de verdade (Text Search + Place Details) via api/places-search
+// (proxy no servidor — a chave do Google nunca chega no navegador). Cobre os
+// 4 estados da tela: carregando, erro, sem resultado, e resultados (com
+// paginação via "Carregar mais").
+async function runRadarSearch(query, pageToken, append) {
+  radarSearchInFlight = true;
+  const searchBtn = document.getElementById('radar-search-btn');
+  if (searchBtn) searchBtn.disabled = true;
+
   const emptyState = document.getElementById('radar-empty-state');
   const loadingState = document.getElementById('radar-loading-state');
+  const errorState = document.getElementById('radar-error-state');
+  const noResultsState = document.getElementById('radar-no-results-state');
   const resultsCard = document.getElementById('radar-results-card');
-  
-  emptyState.style.display = 'none';
-  resultsCard.style.display = 'none';
-  loadingState.style.display = 'flex';
-  
-  setTimeout(() => {
-    loadingState.style.display = 'none';
-    resultsCard.style.display = 'block';
-    
-    const qLower = query.toLowerCase();
-    
-    if (qLower.includes('apdr') || qLower.includes('drag') || qLower.includes('race') || qLower.includes('pista') || qLower.includes('corrida')) {
-      radarSearchResults = [
-        {
-          id: 'radar-1',
-          name: 'APDR - Auto Performance Drag Race',
-          niche: 'Pista de corrida',
-          phone: '+55 11 91485-9517',
-          address: 'Av. Higienópolis, 371 - Jardim Frizzo, Guarulhos - SP',
-          rating: '★ 4.9 (83)',
-          hasWebsite: true,
-          hasMaps: true,
-          status: 'Novo',
-          checked: false
-        },
-        {
-          id: 'radar-2',
-          name: 'Speed Race Club',
-          niche: 'Eventos automotivos',
-          phone: '+55 11 97834-2211',
-          address: 'Rodovia Anhanguera, km 18, Guarulhos - SP',
-          rating: '★ 4.7 (41)',
-          hasWebsite: true,
-          hasMaps: true,
-          status: 'Novo',
-          checked: false
-        },
-        {
-          id: 'radar-3',
-          name: 'DragRace Brasil',
-          niche: 'Associação esportiva',
-          phone: 'Sem telefone',
-          address: 'Guarulhos - SP',
-          rating: 'Sem avaliação',
-          hasWebsite: false,
-          hasMaps: true,
-          status: 'Sem telefone',
-          checked: false
-        }
-      ];
-    } else if (qLower.includes('imobili') || qLower.includes('casa') || qLower.includes('campinas')) {
-      radarSearchResults = [
-        {
-          id: 'radar-4',
-          name: 'Campinas Imóveis Premium',
-          niche: 'Imobiliária',
-          phone: '+55 19 3299-1100',
-          address: 'Av. José de Souza Campos (Norte-Sul), 850 - Cambuí, Campinas - SP',
-          rating: '★ 4.9 (95)',
-          hasWebsite: true,
-          hasMaps: true,
-          status: 'Novo',
-          checked: false
-        },
-        {
-          id: 'radar-5',
-          name: 'Vanguarda Imobiliária',
-          niche: 'Imobiliária',
-          phone: '+55 19 3744-8800',
-          address: 'Rua Barão de Jaguara, 1030 - Centro, Campinas - SP',
-          rating: '★ 4.6 (54)',
-          hasWebsite: true,
-          hasMaps: true,
-          status: 'Novo',
-          checked: false
-        },
-        {
-          id: 'radar-6',
-          name: 'Golden Lar Negócios',
-          niche: 'Corretora de Imóveis',
-          phone: 'Sem telefone',
-          address: 'Av. Francisco Glicério, 1420, Campinas - SP',
-          rating: '★ 4.2 (18)',
-          hasWebsite: false,
-          hasMaps: true,
-          status: 'Sem telefone',
-          checked: false
-        }
-      ];
-    } else {
-      const category = qLower.includes('clinica') || qLower.includes('dentista') || qLower.includes('medico') || qLower.includes('saude') ? 'Saúde' : 'Tecnologia';
-      radarSearchResults = [
-        {
-          id: 'radar-gen-1',
-          name: query.charAt(0).toUpperCase() + query.slice(1) + ' Matriz',
-          niche: category,
-          phone: '+55 11 99999-1234',
-          address: 'Av. Paulista, 1000 - Bela Vista, São Paulo - SP',
-          rating: '★ 4.8 (115)',
-          hasWebsite: true,
-          hasMaps: true,
-          status: 'Novo',
-          checked: false
-        },
-        {
-          id: 'radar-gen-2',
-          name: query.charAt(0).toUpperCase() + query.slice(1) + ' Distribuidora',
-          niche: category,
-          phone: '+55 11 98888-5678',
-          address: 'Rua das Figueiras, 450 - Bairro Jardim, Santo André - SP',
-          rating: '★ 4.5 (34)',
-          hasWebsite: true,
-          hasMaps: true,
-          status: 'Novo',
-          checked: false
-        },
-        {
-          id: 'radar-gen-3',
-          name: query.charAt(0).toUpperCase() + query.slice(1) + ' Local',
-          niche: category,
-          phone: 'Sem telefone',
-          address: 'Rua Marechal Deodoro, 120, Guarulhos - SP',
-          rating: 'Sem avaliação',
-          hasWebsite: false,
-          hasMaps: true,
-          status: 'Sem telefone',
-          checked: false
-        }
-      ];
-    }
-    
-    // Check which ones are already imported
-    radarSearchResults.forEach(res => {
-      const isImported = commercialLeads.some(lead => lead.name.startsWith(res.name));
-      if (isImported) {
-        res.status = 'Importado';
-      }
+  const loadMoreBtn = document.getElementById('radar-load-more-btn');
+
+  if (errorState) errorState.style.display = 'none';
+  if (noResultsState) noResultsState.style.display = 'none';
+
+  if (!append) {
+    if (emptyState) emptyState.style.display = 'none';
+    resultsCard.style.display = 'none';
+    loadingState.style.display = 'flex';
+  } else if (loadMoreBtn) {
+    loadMoreBtn.innerText = 'Carregando...';
+    loadMoreBtn.disabled = true;
+  }
+
+  try {
+    const response = await fetch('/api/places-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(pageToken ? { pageToken } : { query })
     });
-    
+    const data = await response.json().catch(() => ({}));
+
+    loadingState.style.display = 'none';
+
+    if (!response.ok) {
+      if (!append) resultsCard.style.display = 'none';
+      if (errorState) {
+        errorState.style.display = 'flex';
+        const msgEl = document.getElementById('radar-error-message');
+        if (msgEl) msgEl.innerText = data.error || 'Erro ao consultar o Google Maps. Tente novamente.';
+      }
+      return;
+    }
+
+    const newResults = (data.results || []).map(placeToRadarRow);
+    radarSearchResults = append ? radarSearchResults.concat(newResults) : newResults;
+    radarNextPageToken = data.nextPageToken || null;
+
+    markAlreadyAddedRadarResults();
+
+    if (radarSearchResults.length === 0) {
+      resultsCard.style.display = 'none';
+      if (noResultsState) {
+        noResultsState.style.display = 'flex';
+        const qEl = document.getElementById('radar-no-results-query');
+        if (qEl) qEl.innerText = query;
+      }
+    } else {
+      resultsCard.style.display = 'block';
+      renderRadarSearchResults();
+      populateRadarAssignOwner();
+    }
+
+    if (loadMoreBtn) {
+      loadMoreBtn.style.display = radarNextPageToken ? 'inline-block' : 'none';
+      loadMoreBtn.innerText = 'Carregar mais';
+      loadMoreBtn.disabled = false;
+    }
+
+    if (!append) showToast(`Google Maps encontrou ${radarSearchResults.length} empresa(s) para "${query}"! 📡`);
+  } catch (err) {
+    console.error('Erro ao buscar no Radar de Empresas', err);
+    loadingState.style.display = 'none';
+    if (!append) resultsCard.style.display = 'none';
+    if (errorState) {
+      errorState.style.display = 'flex';
+      const msgEl = document.getElementById('radar-error-message');
+      if (msgEl) msgEl.innerText = 'Não foi possível conectar ao servidor. Verifique sua internet e tente novamente.';
+    }
+  } finally {
+    radarSearchInFlight = false;
+    if (searchBtn) searchBtn.disabled = false;
+  }
+}
+
+// Converte um resultado do Google Places (já normalizado pelo backend) na
+// linha usada pela tabela do Radar de Empresas.
+function placeToRadarRow(p) {
+  return {
+    id: p.placeId,
+    placeId: p.placeId,
+    name: p.name,
+    niche: p.category || 'Estabelecimento',
+    phone: p.phone || 'Sem telefone',
+    address: p.address || 'Endereço não informado',
+    rating: typeof p.rating === 'number' ? `★ ${p.rating.toFixed(1)} (${p.ratingCount || 0})` : 'Sem avaliação',
+    ratingValue: typeof p.rating === 'number' ? p.rating : null,
+    ratingCount: p.ratingCount || 0,
+    hasWebsite: !!p.website,
+    website: p.website || null,
+    hasMaps: true,
+    googleMapsUrl: p.googleMapsUrl,
+    businessStatus: p.businessStatus || null,
+    openNow: typeof p.openNow === 'boolean' ? p.openNow : null,
+    lat: p.lat,
+    lng: p.lng,
+    status: 'Novo',
+    addedToRadar: false,
+    checked: false
+  };
+}
+
+// Marca cada resultado como já adicionado ao Radar (radarCompanies, em
+// memória desde loadCommercialState) usando o Place ID — nunca por nome,
+// que é frágil e pode dar falso positivo/negativo.
+function markAlreadyAddedRadarResults() {
+  radarSearchResults.forEach(res => {
+    res.addedToRadar = radarCompanies.some(r => r.placeId === res.placeId);
+    const isImportedToPipeline = commercialLeads.some(lead => lead.name.startsWith(res.name));
+    if (isImportedToPipeline) res.status = 'Importado';
+  });
+}
+
+// Salva uma empresa encontrada no Radar (tabela radar_companies), usando o
+// Place ID como chave de deduplicação. Ação independente do "Importar
+// lead(s)" em lote, que continua levando direto pro Pipeline comercial.
+async function addRadarResultToDatabase(id) {
+  const res = radarSearchResults.find(r => r.id === id);
+  if (!res) return;
+
+  if (res.addedToRadar || radarCompanies.some(r => r.placeId === res.placeId)) {
+    res.addedToRadar = true;
     renderRadarSearchResults();
-    populateRadarAssignOwner();
-    showToast(`Google Maps concluiu busca para "${query}"! 📡`);
-  }, 800);
+    showToast('Empresa já adicionada. ✅');
+    return;
+  }
+
+  const newCompany = {
+    id: crypto.randomUUID(),
+    name: res.name,
+    segment: res.niche,
+    employees: null,
+    revenue: null,
+    decisionMaker: null,
+    mapped: false,
+    placeId: res.placeId,
+    address: res.address === 'Endereço não informado' ? null : res.address,
+    phone: res.phone === 'Sem telefone' ? null : res.phone,
+    website: res.website,
+    rating: res.ratingValue,
+    ratingCount: res.ratingCount,
+    businessStatus: res.businessStatus,
+    openNow: res.openNow,
+    lat: res.lat,
+    lng: res.lng,
+    googleMapsUrl: res.googleMapsUrl
+  };
+
+  radarCompanies.push(newCompany);
+  await saveCommercialState();
+
+  res.addedToRadar = true;
+  renderRadarSearchResults();
+  showToast(`${res.name} adicionada ao Radar! 📡`);
 }
 
 function renderRadarSearchResults() {
@@ -6945,21 +7003,25 @@ function renderRadarSearchResults() {
   
   radarSearchResults.forEach(res => {
     const tr = document.createElement('tr');
-    
+
     const isImported = res.status === 'Importado';
     const isNoPhone = res.status === 'Sem telefone';
-    
-    const checkboxHtml = isImported 
-      ? `<input type="checkbox" disabled style="opacity: 0.3; width: 14px; height: 14px;">` 
+
+    const checkboxHtml = isImported
+      ? `<input type="checkbox" disabled style="opacity: 0.3; width: 14px; height: 14px;">`
       : `<input type="checkbox" ${res.checked ? 'checked' : ''} onclick="toggleRadarRowCheck('${res.id}', this.checked)" style="cursor: pointer; width: 14px; height: 14px;">`;
-      
-    const websiteLink = res.hasWebsite 
-      ? `<a href="#" onclick="event.preventDefault(); alert('Abrindo website de ${res.name}');" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-secondary); text-decoration: none; font-size: 10px; font-weight: bold; margin-right: 4px;" title="Website">🌐</a>`
+
+    const websiteLink = res.hasWebsite
+      ? `<a href="${escapeHtml(res.website)}" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-secondary); text-decoration: none; font-size: 10px; font-weight: bold; margin-right: 4px;" title="Website">🌐</a>`
       : `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); opacity: 0.3; font-size: 10px; font-weight: bold; margin-right: 4px;">🌐</span>`;
-      
-    const mapsLink = res.hasMaps 
-      ? `<a href="#" onclick="event.preventDefault(); alert('Abrindo localização de ${res.name} no Google Maps');" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-secondary); text-decoration: none; font-size: 10px; font-weight: bold;" title="Google Maps">📍</a>`
-      : `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); opacity: 0.3; font-size: 10px; font-weight: bold;">📍</span>`;
+
+    const mapsLink = res.hasMaps
+      ? `<a href="${escapeHtml(res.googleMapsUrl)}" target="_blank" rel="noopener" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-secondary); text-decoration: none; font-size: 10px; font-weight: bold; margin-right: 4px;" title="Google Maps">📍</a>`
+      : `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: transparent; color: var(--text-muted); opacity: 0.3; font-size: 10px; font-weight: bold; margin-right: 4px;">📍</span>`;
+
+    const addToRadarBtn = res.addedToRadar
+      ? `<span style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid rgba(16,185,129,0.35); background: rgba(16,185,129,0.08); color: var(--color-green); font-size: 11px; font-weight: bold;" title="Empresa já adicionada ao Radar">✓</span>`
+      : `<button onclick="addRadarResultToDatabase('${res.id}')" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border-color); background: rgba(255,255,255,0.02); color: var(--text-secondary); cursor: pointer; font-size: 11px; font-weight: bold;" title="Adicionar ao Radar">➕</button>`;
 
     let statusTag = '';
     if (isImported) {
@@ -6970,23 +7032,32 @@ function renderRadarSearchResults() {
       statusTag = `<span style="font-size: 9px; font-weight: bold; text-transform: uppercase; color: var(--color-blue); background-color: rgba(59,130,246,0.05); border: 1px solid rgba(59,130,246,0.25); padding: 2px 8px; border-radius: 4px; display: inline-block;">Novo</span>`;
     }
 
+    let openNowTag = '';
+    if (res.openNow === true) {
+      openNowTag = `<span style="font-size: 9px; color: var(--color-green); display: block; margin-top: 2px;">● Aberto agora</span>`;
+    } else if (res.openNow === false) {
+      openNowTag = `<span style="font-size: 9px; color: var(--text-muted); display: block; margin-top: 2px;">● Fechado agora</span>`;
+    }
+
     tr.innerHTML = `
       <td style="padding: 12px 16px;">${checkboxHtml}</td>
       <td>
-        <strong style="color: var(--text-primary); font-weight: 600; display: block;">${res.name}</strong>
-        <span style="font-size: 9px; color: var(--text-secondary); display: block; margin-top: 1px;">${res.niche}</span>
+        <strong style="color: var(--text-primary); font-weight: 600; display: block;">${escapeHtml(res.name)}</strong>
+        <span style="font-size: 9px; color: var(--text-secondary); display: block; margin-top: 1px;">${escapeHtml(res.niche)}</span>
       </td>
-      <td><span style="font-size: 11px; font-family: monospace; color: ${res.phone === 'Sem telefone' ? 'var(--text-muted)' : 'var(--text-secondary)'};">${res.phone}</span></td>
-      <td><span style="font-size: 11px; color: var(--text-secondary); max-width: 250px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${res.address}">${res.address}</span></td>
+      <td><span style="font-size: 11px; font-family: monospace; color: ${res.phone === 'Sem telefone' ? 'var(--text-muted)' : 'var(--text-secondary)'};">${escapeHtml(res.phone)}</span></td>
+      <td><span style="font-size: 11px; color: var(--text-secondary); max-width: 250px; display: inline-block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(res.address)}">${escapeHtml(res.address)}</span></td>
       <td>
         <span style="font-size: 11px; color: ${res.rating === 'Sem avaliação' ? 'var(--text-muted)' : 'var(--color-green)'};">
-          ${res.rating}
+          ${escapeHtml(res.rating)}
         </span>
+        ${openNowTag}
       </td>
       <td>
         <div style="display: flex; align-items: center;">
           ${websiteLink}
           ${mapsLink}
+          ${addToRadarBtn}
         </div>
       </td>
       <td style="text-align: right; padding-right: 20px;">${statusTag}</td>
