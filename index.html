@@ -70,7 +70,7 @@
             </a>
           </li>
           <li>
-            <a class="menu-link" onclick="alert('Módulo Configurações - Em breve no PRATA')">
+            <a class="menu-link" id="menu-configuracoes-link" onclick="showConfiguracoes()">
               <span class="menu-icon">⚙</span>
               Configurações
             </a>
@@ -1308,6 +1308,115 @@
             </div>
 
           </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- VISTA: CONFIGURAÇÕES                       -->
+      <!-- ========================================== -->
+      <div id="view-configuracoes" style="display: none;">
+        <header class="header-wrapper">
+          <div class="header-info-container">
+            <h1 class="header-welcome">Configurações</h1>
+            <span class="header-meta">Gerencie seu perfil e os dados da sua conta/workspace</span>
+          </div>
+          <div class="header-controls">
+            <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+            <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
+            <div class="header-avatar">FG</div>
+          </div>
+        </header>
+
+        <div style="display: flex; flex-direction: column; gap: 20px; max-width: 720px;">
+
+          <!-- MEU PERFIL -->
+          <div class="report-card">
+            <h3 class="report-section-title">Meu perfil</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nome completo</label>
+                <input type="text" id="config-profile-name" placeholder="Seu nome completo" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Telefone/WhatsApp</label>
+                <input type="text" id="config-profile-phone" placeholder="+55 (11) 99999-9999" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Cargo</label>
+                <input type="text" id="config-profile-role" placeholder="Ex: Gestor de Tráfego" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Departamento</label>
+                <input type="text" id="config-profile-department" placeholder="Ex: Mídia Paga" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Fuso horário</label>
+                <select id="config-profile-timezone" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; outline: none; cursor: pointer;">
+                  <option value="America/Sao_Paulo">Brasília (GMT-3)</option>
+                  <option value="America/Manaus">Manaus (GMT-4)</option>
+                  <option value="America/Rio_Branco">Rio Branco (GMT-5)</option>
+                  <option value="America/Noronha">Fernando de Noronha (GMT-2)</option>
+                  <option value="UTC">UTC (GMT+0)</option>
+                  <option value="Europe/Lisbon">Lisboa (GMT+0/+1)</option>
+                  <option value="America/New_York">Nova York (GMT-5/-4)</option>
+                </select>
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Idioma</label>
+                <select id="config-profile-language" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; outline: none; cursor: pointer;">
+                  <option value="pt-BR">Português (Brasil)</option>
+                  <option value="en-US">English (US)</option>
+                  <option value="es-ES">Español</option>
+                </select>
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+              <button class="pink-btn" style="height: 34px; padding: 0 20px; font-size: 12px;" onclick="saveProfileSettings()">Salvar alterações</button>
+            </div>
+          </div>
+
+          <!-- CONTA E WORKSPACE -->
+          <div class="report-card">
+            <h3 class="report-section-title">Conta e workspace</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px;">
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Nome da empresa</label>
+                <input type="text" id="config-workspace-name" placeholder="Nome da agência/empresa" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">CNPJ</label>
+                <input type="text" id="config-workspace-cnpj" placeholder="00.000.000/0001-00" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Segmento</label>
+                <input type="text" id="config-workspace-segment" placeholder="Ex: Marketing Digital" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Site</label>
+                <input type="text" id="config-workspace-site" placeholder="https://suaempresa.com.br" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Telefone comercial</label>
+                <input type="text" id="config-workspace-phone" placeholder="+55 (11) 99999-9999" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">E-mail de contato</label>
+                <input type="email" id="config-workspace-email" placeholder="contato@suaempresa.com.br" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group" style="grid-column: span 2;">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Endereço</label>
+                <input type="text" id="config-workspace-address" placeholder="Rua, número, bairro, cidade - UF" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+              <div class="drawer-field-group">
+                <label class="drawer-field-label" style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Responsável pela conta</label>
+                <input type="text" id="config-workspace-owner" placeholder="Nome do responsável" style="width: 100%; font-size: 11px; padding: 8px 10px; background: var(--bg-app); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-family: var(--font-family-body);">
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end; margin-top: 16px;">
+              <button class="pink-btn" style="height: 34px; padding: 0 20px; font-size: 12px;" onclick="saveWorkspaceSettings()">Salvar alterações</button>
+            </div>
+          </div>
+
         </div>
       </div>
 

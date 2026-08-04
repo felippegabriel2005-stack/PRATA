@@ -945,15 +945,19 @@ async function showDashboardPai() {
   if (viewColab) viewColab.style.display = 'none';
   const viewReports = document.getElementById('view-relatorios');
   if (viewReports) viewReports.style.display = 'none';
+  const viewConfig = document.getElementById('view-configuracoes');
+  if (viewConfig) viewConfig.style.display = 'none';
   if (typeof hideCommercialViews === 'function') hideCommercialViews();
-  
+
   // Atualiza classes ativas da sidebar
   document.getElementById('menu-dashboard-link').classList.add('active');
   const menuColab = document.getElementById('menu-colaboradores-link');
   if (menuColab) menuColab.classList.remove('active');
   const menuReports = document.getElementById('menu-relatorios-link');
   if (menuReports) menuReports.classList.remove('active');
-  
+  const menuConfig = document.getElementById('menu-configuracoes-link');
+  if (menuConfig) menuConfig.classList.remove('active');
+
   const clientItems = document.querySelectorAll('.client-item');
   clientItems.forEach(item => item.classList.remove('active'));
   
@@ -1946,8 +1950,12 @@ async function selectAnalysis(clientName, analysisName, analysisId) {
   if (menuColab) menuColab.classList.remove('active');
   const menuReports = document.getElementById('menu-relatorios-link');
   if (menuReports) menuReports.classList.remove('active');
+  const menuConfig = document.getElementById('menu-configuracoes-link');
+  if (menuConfig) menuConfig.classList.remove('active');
   const viewReports = document.getElementById('view-relatorios');
   if (viewReports) viewReports.style.display = 'none';
+  const viewConfig = document.getElementById('view-configuracoes');
+  if (viewConfig) viewConfig.style.display = 'none';
   if (typeof hideCommercialViews === 'function') hideCommercialViews();
 
   // Load screen view
@@ -3933,15 +3941,19 @@ async function selectClient(clientName) {
   if (viewColab2) viewColab2.style.display = 'none';
   const viewReports = document.getElementById('view-relatorios');
   if (viewReports) viewReports.style.display = 'none';
+  const viewConfig = document.getElementById('view-configuracoes');
+  if (viewConfig) viewConfig.style.display = 'none';
   if (typeof hideCommercialViews === 'function') hideCommercialViews();
-  
+
   // Atualiza classes ativas na sidebar
   document.getElementById('menu-dashboard-link').classList.remove('active');
   const menuColab2 = document.getElementById('menu-colaboradores-link');
   if (menuColab2) menuColab2.classList.remove('active');
   const menuReports = document.getElementById('menu-relatorios-link');
   if (menuReports) menuReports.classList.remove('active');
-  
+  const menuConfig = document.getElementById('menu-configuracoes-link');
+  if (menuConfig) menuConfig.classList.remove('active');
+
   // Sincroniza sub-menus da sidebar
   const clientKey = clientSlugFromName(clientName);
 
@@ -4565,14 +4577,18 @@ async function showColaboradores() {
   document.getElementById('view-colaboradores').style.display = 'block';
   const viewReports = document.getElementById('view-relatorios');
   if (viewReports) viewReports.style.display = 'none';
+  const viewConfig = document.getElementById('view-configuracoes');
+  if (viewConfig) viewConfig.style.display = 'none';
   if (typeof hideCommercialViews === 'function') hideCommercialViews();
-  
+
   // Atualiza classes ativas da sidebar
   document.getElementById('menu-dashboard-link').classList.remove('active');
   document.getElementById('menu-colaboradores-link').classList.add('active');
   const menuReports = document.getElementById('menu-relatorios-link');
   if (menuReports) menuReports.classList.remove('active');
-  
+  const menuConfig = document.getElementById('menu-configuracoes-link');
+  if (menuConfig) menuConfig.classList.remove('active');
+
   const clientItems = document.querySelectorAll('.client-item');
   clientItems.forEach(item => {
     item.classList.remove('active');
@@ -5217,6 +5233,10 @@ function getCurrentScreenContext() {
     return { label: 'Colaboradores', detail: '' };
   }
 
+  if (isVisible('view-configuracoes')) {
+    return { label: 'Configurações (perfil e workspace)', detail: '' };
+  }
+
   const comercialVisivel = ['view-comercial-radar', 'view-comercial-pipeline', 'view-comercial-contatos']
     .some(id => isVisible(id));
   if (comercialVisivel) {
@@ -5466,10 +5486,12 @@ function showRelatorios() {
   document.getElementById('view-dashboard-conversao').style.display = 'none';
   const viewColab = document.getElementById('view-colaboradores');
   if (viewColab) viewColab.style.display = 'none';
-  
+  const viewConfig = document.getElementById('view-configuracoes');
+  if (viewConfig) viewConfig.style.display = 'none';
+
   document.getElementById('view-relatorios').style.display = 'block';
   if (typeof hideCommercialViews === 'function') hideCommercialViews();
-  
+
   document.querySelectorAll('.menu-link').forEach(link => link.classList.remove('active'));
   document.getElementById('menu-relatorios-link').classList.add('active');
   
@@ -5484,6 +5506,115 @@ function showRelatorios() {
   
   populateReportCampaigns();
   updateReportPreview();
+}
+
+// --------------------------------------------------
+// Configurações (Meu Perfil / Conta e Workspace)
+// --------------------------------------------------
+
+async function showConfiguracoes() {
+  currentClient = "";
+  document.getElementById('view-dashboard-pai').style.display = 'none';
+  document.getElementById('view-dashboard-filho').style.display = 'none';
+  document.getElementById('view-dashboard-conversao').style.display = 'none';
+  const viewColab = document.getElementById('view-colaboradores');
+  if (viewColab) viewColab.style.display = 'none';
+  const viewReports = document.getElementById('view-relatorios');
+  if (viewReports) viewReports.style.display = 'none';
+  document.getElementById('view-configuracoes').style.display = 'block';
+  if (typeof hideCommercialViews === 'function') hideCommercialViews();
+
+  document.querySelectorAll('.menu-link').forEach(link => link.classList.remove('active'));
+  document.getElementById('menu-configuracoes-link').classList.add('active');
+
+  document.querySelectorAll('.analysis-menu').forEach(m => m.style.display = 'none');
+  document.querySelectorAll('.client-container').forEach(c => c.classList.remove('expanded'));
+
+  const clientItems = document.querySelectorAll('.client-item');
+  clientItems.forEach(item => {
+    item.classList.remove('active');
+    item.style.backgroundColor = 'transparent';
+  });
+
+  await loadAppSettings();
+}
+
+// Carrega os dois registros únicos (perfil e workspace) e preenche o
+// formulário. As tabelas sempre têm no máximo 1 linha (id = 'singleton'),
+// já que o PRATA ainda não tem múltiplos usuários/contas.
+async function loadAppSettings() {
+  const [{ data: profile, error: profileErr }, { data: workspace, error: workspaceErr }] = await Promise.all([
+    supabaseClient.from('app_profile').select('*').eq('id', 'singleton').maybeSingle(),
+    supabaseClient.from('app_workspace').select('*').eq('id', 'singleton').maybeSingle()
+  ]);
+
+  if (profileErr) console.error('Erro ao carregar perfil', profileErr);
+  if (workspaceErr) console.error('Erro ao carregar workspace', workspaceErr);
+
+  if (profile) {
+    document.getElementById('config-profile-name').value = profile.full_name || '';
+    document.getElementById('config-profile-phone').value = profile.phone || '';
+    document.getElementById('config-profile-role').value = profile.role || '';
+    document.getElementById('config-profile-department').value = profile.department || '';
+    document.getElementById('config-profile-timezone').value = profile.timezone || 'America/Sao_Paulo';
+    document.getElementById('config-profile-language').value = profile.language || 'pt-BR';
+  }
+
+  if (workspace) {
+    document.getElementById('config-workspace-name').value = workspace.company_name || '';
+    document.getElementById('config-workspace-cnpj').value = workspace.cnpj || '';
+    document.getElementById('config-workspace-segment').value = workspace.segment || '';
+    document.getElementById('config-workspace-site').value = workspace.website || '';
+    document.getElementById('config-workspace-phone').value = workspace.phone || '';
+    document.getElementById('config-workspace-email').value = workspace.contact_email || '';
+    document.getElementById('config-workspace-address').value = workspace.address || '';
+    document.getElementById('config-workspace-owner').value = workspace.account_owner || '';
+  }
+}
+
+async function saveProfileSettings() {
+  const payload = {
+    id: 'singleton',
+    full_name: document.getElementById('config-profile-name').value.trim(),
+    phone: document.getElementById('config-profile-phone').value.trim(),
+    role: document.getElementById('config-profile-role').value.trim(),
+    department: document.getElementById('config-profile-department').value.trim(),
+    timezone: document.getElementById('config-profile-timezone').value,
+    language: document.getElementById('config-profile-language').value,
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabaseClient.from('app_profile').upsert(payload);
+  if (error) {
+    console.error('Erro ao salvar perfil', error);
+    showToast('Não foi possível salvar o perfil. Tente novamente.');
+    return;
+  }
+  showToast('Perfil atualizado com sucesso! ✅');
+}
+
+async function saveWorkspaceSettings() {
+  const payload = {
+    id: 'singleton',
+    company_name: document.getElementById('config-workspace-name').value.trim(),
+    cnpj: document.getElementById('config-workspace-cnpj').value.trim(),
+    segment: document.getElementById('config-workspace-segment').value.trim(),
+    website: document.getElementById('config-workspace-site').value.trim(),
+    phone: document.getElementById('config-workspace-phone').value.trim(),
+    contact_email: document.getElementById('config-workspace-email').value.trim(),
+    address: document.getElementById('config-workspace-address').value.trim(),
+    account_owner: document.getElementById('config-workspace-owner').value.trim(),
+    updated_at: new Date().toISOString()
+  };
+
+  const { error } = await supabaseClient.from('app_workspace').upsert(payload);
+  if (error) {
+    console.error('Erro ao salvar workspace', error);
+    showToast('Não foi possível salvar os dados da empresa. Tente novamente.');
+    return;
+  }
+
+  showToast('Dados da empresa atualizados com sucesso! ✅');
 }
 
 function selectReportFormat(format) {
@@ -6439,7 +6570,9 @@ function selectComercialTab(tab) {
   if (viewColab) viewColab.style.display = 'none';
   const viewReports = document.getElementById('view-relatorios');
   if (viewReports) viewReports.style.display = 'none';
-  
+  const viewConfig = document.getElementById('view-configuracoes');
+  if (viewConfig) viewConfig.style.display = 'none';
+
   document.getElementById('view-comercial-radar').style.display = 'none';
   document.getElementById('view-comercial-pipeline').style.display = 'none';
   const comContatos = document.getElementById('view-comercial-contatos');
@@ -6469,7 +6602,9 @@ function selectComercialTab(tab) {
   if (menuColab) menuColab.classList.remove('active');
   const menuReports = document.getElementById('menu-relatorios-link');
   if (menuReports) menuReports.classList.remove('active');
-  
+  const menuConfig = document.getElementById('menu-configuracoes-link');
+  if (menuConfig) menuConfig.classList.remove('active');
+
   // Remove active from all clients
   const clientItems = document.querySelectorAll('.client-item');
   clientItems.forEach(item => {
