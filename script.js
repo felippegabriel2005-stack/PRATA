@@ -3062,6 +3062,54 @@ function closeEstruturaModal() {
   if (modal) modal.style.display = 'none';
 }
 
+// Arrastar métricas no editor de estrutura (substitui os antigos botões
+// ←/→): draggedMetric guarda de onde a métrica saiu, metricDropTarget guarda
+// em cima de qual chip ela está pairando agora (e de que lado), pra permitir
+// reordenar dentro da mesma linha OU mover pra outra linha.
+let draggedMetric = null;
+let metricDropTarget = null;
+
+function clearMetricDropIndicators() {
+  document.querySelectorAll('.metric-chip-edit').forEach(el => {
+    el.style.boxShadow = '';
+  });
+}
+
+function handleMetricDrop(targetRowIndex) {
+  if (!draggedMetric) return;
+
+  const { rowIndex: fromRowIndex, metricIndex: fromMetricIndex } = draggedMetric;
+  const sourceRow = tempRows[fromRowIndex];
+  const targetRow = tempRows[targetRowIndex];
+
+  if (targetRow !== sourceRow && targetRow.metrics.length >= 6) {
+    showToast('Essa linha já está no limite de 6 métricas.');
+    draggedMetric = null;
+    metricDropTarget = null;
+    clearMetricDropIndicators();
+    return;
+  }
+
+  // Calcula o índice de destino com base nos índices ANTES de remover a
+  // métrica de origem, ajustando depois — evita off-by-one quando a solta é
+  // dentro da própria linha.
+  let insertIndex = (metricDropTarget && metricDropTarget.rowIndex === targetRowIndex)
+    ? metricDropTarget.metricIndex + (metricDropTarget.isAfter ? 1 : 0)
+    : targetRow.metrics.length;
+
+  const [movedMetric] = sourceRow.metrics.splice(fromMetricIndex, 1);
+
+  if (sourceRow === targetRow && fromMetricIndex < insertIndex) {
+    insertIndex -= 1;
+  }
+
+  targetRow.metrics.splice(insertIndex, 0, movedMetric);
+
+  draggedMetric = null;
+  metricDropTarget = null;
+  renderEditRows();
+}
+
 function renderEditRows() {
   const container = document.getElementById('edit-rows-container');
   if (!container) return;
@@ -3128,13 +3176,64 @@ function renderEditRows() {
     metricsWrapper.style.marginTop = '12px';
     metricsWrapper.style.alignItems = 'center';
 
+    // Solta a métrica arrastada nesta linha (espaço vazio entre/depois dos
+    // chips, ou a própria linha se ela ainda não tiver nenhuma métrica).
+    metricsWrapper.ondragover = (e) => {
+      if (!draggedMetric) return;
+      e.preventDefault();
+      metricDropTarget = null;
+      clearMetricDropIndicators();
+    };
+    metricsWrapper.ondrop = (e) => {
+      e.preventDefault();
+      handleMetricDrop(rowIndex);
+    };
+
     row.metrics.forEach((metric, metricIndex) => {
       const chip = document.createElement('div');
       chip.className = 'metric-chip-edit';
+      chip.draggable = true;
+      chip.style.cursor = 'grab';
       if (metric.isEditing) {
         chip.style.borderColor = '#8b5cf6';
         chip.style.backgroundColor = 'rgba(139, 92, 246, 0.05)';
       }
+
+      chip.ondragstart = (e) => {
+        e.stopPropagation();
+        draggedMetric = { rowIndex, metricIndex };
+        e.dataTransfer.effectAllowed = 'move';
+        chip.classList.add('dragging');
+      };
+      chip.ondragend = () => {
+        chip.classList.remove('dragging');
+        draggedMetric = null;
+        metricDropTarget = null;
+        clearMetricDropIndicators();
+      };
+      chip.ondragover = (e) => {
+        if (!draggedMetric) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const rect = chip.getBoundingClientRect();
+        const isAfter = (e.clientX - rect.left) > rect.width / 2;
+        metricDropTarget = { rowIndex, metricIndex, isAfter };
+        clearMetricDropIndicators();
+        chip.style.boxShadow = isAfter ? 'inset -3px 0 0 0 #8b5cf6' : 'inset 3px 0 0 0 #8b5cf6';
+      };
+      chip.ondrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        handleMetricDrop(rowIndex);
+      };
+
+      const dragHandle = document.createElement('span');
+      dragHandle.innerText = '⠿';
+      dragHandle.title = 'Arraste para reordenar ou mover para outra linha';
+      dragHandle.style.color = 'var(--text-muted)';
+      dragHandle.style.fontSize = '12px';
+      dragHandle.style.marginRight = '2px';
+      chip.appendChild(dragHandle);
 
       const nameSpan = document.createElement('span');
       nameSpan.innerText = metric.name;
@@ -3148,36 +3247,6 @@ function renderEditRows() {
       actions.style.display = 'flex';
       actions.style.alignItems = 'center';
       actions.style.gap = '4px';
-
-      // Reordenar para Esquerda
-      const moveLeftBtn = document.createElement('button');
-      moveLeftBtn.className = 'colab-btn-edit';
-      moveLeftBtn.style.padding = '2px 6px';
-      moveLeftBtn.style.fontSize = '9px';
-      moveLeftBtn.innerText = '←';
-      moveLeftBtn.disabled = metricIndex === 0;
-      moveLeftBtn.onclick = (e) => {
-        e.stopPropagation();
-        const tmp = row.metrics[metricIndex];
-        row.metrics[metricIndex] = row.metrics[metricIndex - 1];
-        row.metrics[metricIndex - 1] = tmp;
-        renderEditRows();
-      };
-
-      // Reordenar para Direita
-      const moveRightBtn = document.createElement('button');
-      moveRightBtn.className = 'colab-btn-edit';
-      moveRightBtn.style.padding = '2px 6px';
-      moveRightBtn.style.fontSize = '9px';
-      moveRightBtn.innerText = '→';
-      moveRightBtn.disabled = metricIndex === row.metrics.length - 1;
-      moveRightBtn.onclick = (e) => {
-        e.stopPropagation();
-        const tmp = row.metrics[metricIndex];
-        row.metrics[metricIndex] = row.metrics[metricIndex + 1];
-        row.metrics[metricIndex + 1] = tmp;
-        renderEditRows();
-      };
 
       // Editar Detalhes
       const editBtn = document.createElement('button');
@@ -3209,8 +3278,6 @@ function renderEditRows() {
         renderEditRows();
       };
 
-      actions.appendChild(moveLeftBtn);
-      actions.appendChild(moveRightBtn);
       actions.appendChild(editBtn);
       actions.appendChild(removeBtn);
       chip.appendChild(actions);
