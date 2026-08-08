@@ -696,14 +696,12 @@
           <div class="section-heading-wrapper" style="align-items: center;">
             <div>
               <h2 class="section-heading">📢 Performance Ads</h2>
-              <span class="header-meta" style="font-size: 11px; margin-top: 2px; display: inline-block;">Google Ads & Meta Ads &middot; <span id="c-ads-period-label">12/05 a 22/06</span></span>
+              <span class="header-meta" style="font-size: 11px; margin-top: 2px; display: inline-block;"><span id="c-ads-platforms-label">Google Ads & Meta Ads</span> &middot; <span id="c-ads-period-label">12/05 a 22/06</span></span>
             </div>
-            
-            <!-- Abas Rápidas por Canal de Ads -->
-            <div class="filters-container">
+
+            <!-- Abas Rápidas por Canal de Ads (geradas dinamicamente por renderAdsPlatformFilters) -->
+            <div class="filters-container" id="c-ads-platform-tabs">
               <button class="filter-btn active" id="c-ads-tab-todas" onclick="filterAdsPlatform('Todas', this)">Todas</button>
-              <button class="filter-btn" onclick="filterAdsPlatform('Google Ads', this)">Google Ads</button>
-              <button class="filter-btn" onclick="filterAdsPlatform('Meta Ads', this)">Meta Ads</button>
             </div>
           </div>
 
@@ -758,59 +756,8 @@
           </div>
 
           <!-- Comparativo por Plataforma (Google vs Meta) -->
-          <div class="client-detail-grid-two-columns" style="gap: 12px;">
-            <!-- Google Ads -->
-            <div class="metric-card" style="border-left: 3px solid #3b82f6; gap: 10px;">
-              <span class="card-title" style="display: flex; align-items: center; gap: 6px;">
-                <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #3b82f6;"></span>
-                Google Ads
-              </span>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
-                <div>
-                  <span class="card-title" style="font-size: 9px;">Investimento</span>
-                  <div class="card-value" id="c-gads-investimento" style="font-size: 16px; margin-top: 2px;">R$18.148,09</div>
-                </div>
-                <div>
-                  <span class="card-title" style="font-size: 9px;">Cliques</span>
-                  <div class="card-value" id="c-gads-cliques" style="font-size: 16px; margin-top: 2px;">6.059</div>
-                </div>
-                <div>
-                  <span class="card-title" style="font-size: 9px;">Conversões</span>
-                  <div class="card-value highlight-green" id="c-gads-conversoes" style="font-size: 16px; margin-top: 2px;">347</div>
-                </div>
-                <div>
-                  <span class="card-title" style="font-size: 9px;">CPA</span>
-                  <div class="card-value" id="c-gads-cpa" style="font-size: 16px; margin-top: 2px;">R$52,32</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Meta Ads -->
-            <div class="metric-card" style="border-left: 3px solid #8b5cf6; gap: 10px;">
-              <span class="card-title" style="display: flex; align-items: center; gap: 6px;">
-                <span style="width: 6px; height: 6px; border-radius: 50%; background-color: #8b5cf6;"></span>
-                Meta Ads
-              </span>
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
-                <div>
-                  <span class="card-title" style="font-size: 9px;">Investimento</span>
-                  <div class="card-value" id="c-mads-investimento" style="font-size: 16px; margin-top: 2px;">R$25.480,53</div>
-                </div>
-                <div>
-                  <span class="card-title" style="font-size: 9px;">Cliques</span>
-                  <div class="card-value" id="c-mads-cliques" style="font-size: 16px; margin-top: 2px;">16.744</div>
-                </div>
-                <div>
-                  <span class="card-title" style="font-size: 9px;">Conversões</span>
-                  <div class="card-value highlight-green" id="c-mads-conversoes" style="font-size: 16px; margin-top: 2px;">35</div>
-                </div>
-                <div>
-                  <span class="card-title" style="font-size: 9px;">CPA</span>
-                  <div class="card-value" id="c-mads-cpa" style="font-size: 16px; margin-top: 2px;">R$728,02</div>
-                </div>
-              </div>
-            </div>
-          </div>
+          <!-- Comparativo por Plataforma (gerado dinamicamente por renderAdsPlatformCards, conforme as plataformas reais do cliente) -->
+          <div class="client-detail-grid-two-columns" style="gap: 12px;" id="c-ads-platforms-grid"></div>
 
           <!-- Tabela de Campanhas -->
           <div class="table-card">
@@ -823,8 +770,6 @@
                 
                 <select id="filter-camp-platform" class="filter-select" onchange="filterCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">
                   <option value="Todas">Plataforma (Todas)</option>
-                  <option value="Google Ads">Google Ads</option>
-                  <option value="Meta Ads">Meta Ads</option>
                 </select>
                 
                 <select id="filter-camp-objective" class="filter-select" onchange="filterCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">

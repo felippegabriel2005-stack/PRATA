@@ -138,6 +138,17 @@ function computeClientStatusFromData(raw, targetsRows) {
   return { status, reasons };
 }
 
+// Cores conhecidas por plataforma de mídia; qualquer plataforma nova (ex:
+// TikTok Ads, LinkedIn Ads) que apareça nos dados reais do cliente usa uma
+// cor de um rodízio de fallback, em vez de ficar sem cor ou quebrar telas
+// que hoje só previam Google Ads / Meta Ads.
+const PLATFORM_COLORS = { 'Google Ads': '#3b82f6', 'Meta Ads': '#8b5cf6', 'LinkedIn Ads': '#0a66c2' };
+const PLATFORM_COLOR_FALLBACKS = ['#10b981', '#f59e0b', '#ef4444', '#ec4899', '#14b8a6', '#f97316'];
+function getPlatformColor(platform, index) {
+  if (PLATFORM_COLORS[platform]) return PLATFORM_COLORS[platform];
+  return PLATFORM_COLOR_FALLBACKS[(index || 0) % PLATFORM_COLOR_FALLBACKS.length];
+}
+
 function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows) {
   let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
   const byPlatform = {};
@@ -4258,17 +4269,9 @@ async function selectClient(clientName) {
   // 3. Inicialização e Carga da seção Performance Ads
   // --------------------------------------------------
   adsActivePlatform = "Todas";
-  
-  // Reseta estado dos botões de plataforma de Ads
-  document.getElementById('c-ads-tab-todas').classList.add('active');
-  const adsButtons = document.querySelectorAll('#c-performance-ads-section .filters-container button');
-  adsButtons.forEach(btn => {
-    if (btn.id !== 'c-ads-tab-todas') btn.classList.remove('active');
-  });
 
   // Reseta filtros de busca e selects de campanhas
   document.getElementById('search-campaign').value = '';
-  document.getElementById('filter-camp-platform').value = 'Todas';
   document.getElementById('filter-camp-objective').value = 'Todos';
   document.getElementById('filter-camp-status').value = 'Todos';
   document.getElementById('c-campaign-select-all').checked = true;
@@ -4278,6 +4281,10 @@ async function selectClient(clientName) {
 
   // Atualiza rótulo de período dos Ads
   document.getElementById('c-ads-period-label').innerText = data.adsKpis.period;
+
+  // Monta as abas/opções de plataforma a partir das campanhas reais deste
+  // cliente (Google/Meta sempre; LinkedIn Ads e outras só se existirem)
+  renderAdsPlatformFilters();
 
   // Renderiza tabela e calcula métricas iniciais
   renderCampaignsTable();
@@ -4355,31 +4362,39 @@ function renderCampaignsTable() {
   // Título da Tabela com Contador
   document.getElementById('c-campaigns-title').innerText = `Campanhas (${clientCampaigns.length})`;
 
-  clientCampaigns.forEach(camp => {
+  clientCampaigns.forEach((camp, campIndex) => {
     const tr = document.createElement('tr');
     tr.style.cursor = 'pointer';
-    
-    // Define a classe da bolinha de status da plataforma
-    const dotColor = camp.platform === 'Google Ads' ? '#3b82f6' : '#8b5cf6';
+    // O id de campanhas reais é uma string composta ("Nome||Plataforma"),
+    // com espaços e "|" — nunca embutir esse valor cru dentro de um atributo
+    // onclick/onchange (vira JS inválido). Guarda em data-id (atributo HTML
+    // normal, sem esse problema) e lê de volta via this/dataset nos handlers.
+    tr.dataset.id = camp.id;
+
+    const dotColor = getPlatformColor(camp.platform, campIndex);
 
     // Cria a linha
     tr.innerHTML = `
       <td style="padding: 12px 10px;" onclick="event.stopPropagation();">
-        <input type="checkbox" class="campaign-row-checkbox" data-id="${camp.id}" ${camp.checked ? 'checked' : ''} onchange="toggleCampaignSelection(${camp.id}, this.checked)">
+        <input type="checkbox" class="campaign-row-checkbox" ${camp.checked ? 'checked' : ''} onchange="toggleCampaignSelection(this.closest('tr').dataset.id, this.checked)">
       </td>
-      <td class="table-client-cell" onclick="toggleCampaignRow(${camp.id})">
+      <td class="table-client-cell">
         <span class="status-dot" style="background-color: ${dotColor}; box-shadow: 0 0 6px ${dotColor};"></span>
-        <span style="font-weight: 500;">${camp.name}</span>
+        <span style="font-weight: 500;">${escapeHtml(camp.name)}</span>
       </td>
-      <td onclick="toggleCampaignRow(${camp.id})">${camp.platform}</td>
-      <td onclick="toggleCampaignRow(${camp.id})" style="font-weight: 600;">R$ ${camp.invest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-      <td onclick="toggleCampaignRow(${camp.id})">${camp.impress.toLocaleString('pt-BR')}</td>
-      <td onclick="toggleCampaignRow(${camp.id})">${camp.clicks.toLocaleString('pt-BR')}</td>
-      <td onclick="toggleCampaignRow(${camp.id})">${camp.ctr}%</td>
-      <td onclick="toggleCampaignRow(${camp.id})">R$ ${camp.cpc.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
-      <td onclick="toggleCampaignRow(${camp.id})">${camp.convs}</td>
-      <td onclick="toggleCampaignRow(${camp.id})">${camp.convs > 0 ? 'R$ ' + camp.cpa.toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '—'}</td>
+      <td>${escapeHtml(camp.platform)}</td>
+      <td style="font-weight: 600;">R$ ${camp.invest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+      <td>${camp.impress.toLocaleString('pt-BR')}</td>
+      <td>${camp.clicks.toLocaleString('pt-BR')}</td>
+      <td>${camp.ctr}%</td>
+      <td>R$ ${camp.cpc.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</td>
+      <td>${camp.convs}</td>
+      <td>${camp.convs > 0 ? 'R$ ' + camp.cpa.toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '—'}</td>
     `;
+    tr.onclick = (e) => {
+      if (e.target.closest('.campaign-row-checkbox')) return;
+      toggleCampaignRow(tr.dataset.id);
+    };
     tbody.appendChild(tr);
   });
 }
@@ -4431,15 +4446,17 @@ function filterCampaigns() {
   recalculateAdsMetrics();
 }
 
-// Seleção de Checkbox individual na tabela
+// Seleção de Checkbox individual na tabela. Compara por toString() porque o
+// id vem sempre como string do dataset (HTML), mas em campanhas de mock
+// antigas camp.id ainda é numérico.
 function toggleCampaignSelection(id, checked) {
-  const camp = clientCampaigns.find(c => c.id === id);
+  const camp = clientCampaigns.find(c => c.id.toString() === id.toString());
   if (camp) {
     camp.checked = checked;
   }
-  
+
   // Atualiza checkbox mestre do cabeçalho
-  const allChecked = clientCampaigns.every(c => c.checked);
+  const allChecked = clientCampaigns.length > 0 && clientCampaigns.every(c => c.checked);
   document.getElementById('c-campaign-select-all').checked = allChecked;
 
   recalculateAdsMetrics();
@@ -4447,7 +4464,8 @@ function toggleCampaignSelection(id, checked) {
 
 // Clique na linha inteira da tabela
 function toggleCampaignRow(id) {
-  const checkbox = document.querySelector(`.campaign-row-checkbox[data-id="${id}"]`);
+  const row = document.querySelector(`#c-table-campaigns tr[data-id="${CSS.escape(id.toString())}"]`);
+  const checkbox = row ? row.querySelector('.campaign-row-checkbox') : null;
   if (checkbox) {
     checkbox.checked = !checkbox.checked;
     toggleCampaignSelection(id, checkbox.checked);
@@ -4464,33 +4482,35 @@ function toggleSelectAllCampaigns(checked) {
   recalculateAdsMetrics();
 }
 
-// Recalcula KPIs e cards de plataforma com base nas campanhas selecionadas
+// Recalcula KPIs e cards de plataforma com base nas campanhas selecionadas.
+// Os cards de plataforma são gerados dinamicamente: uma plataforma só ganha
+// card se existir pelo menos uma campanha dela pra esse cliente (Google Ads
+// e Meta Ads sempre existiam fixos no HTML; agora LinkedIn Ads ou qualquer
+// outra plataforma importada aparece do mesmo jeito, sem precisar mexer no
+// código de novo).
 function recalculateAdsMetrics() {
   let totalInvest = 0;
   let totalClicks = 0;
   let totalConvs = 0;
   let totalImpress = 0;
 
-  // KPIs individuais por canal
-  let gInvest = 0; let gClicks = 0; let gConvs = 0;
-  let mInvest = 0; let mClicks = 0; let mConvs = 0;
+  const byPlatform = {};
+  const platformOrder = [];
 
   clientCampaigns.forEach(c => {
+    if (!byPlatform[c.platform]) {
+      byPlatform[c.platform] = { invest: 0, clicks: 0, convs: 0 };
+      platformOrder.push(c.platform);
+    }
     if (c.checked) {
       totalInvest += c.invest;
       totalClicks += c.clicks;
       totalConvs += c.convs;
       totalImpress += c.impress;
 
-      if (c.platform === 'Google Ads') {
-        gInvest += c.invest;
-        gClicks += c.clicks;
-        gConvs += c.convs;
-      } else if (c.platform === 'Meta Ads') {
-        mInvest += c.invest;
-        mClicks += c.clicks;
-        mConvs += c.convs;
-      }
+      byPlatform[c.platform].invest += c.invest;
+      byPlatform[c.platform].clicks += c.clicks;
+      byPlatform[c.platform].convs += c.convs;
     }
   });
 
@@ -4505,19 +4525,84 @@ function recalculateAdsMetrics() {
   document.getElementById('c-ads-cpa').innerText = cpa > 0 ? `R$ ${cpa.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '—';
   document.getElementById('c-ads-ctr').innerText = `${ctr.toFixed(2)}%`;
 
-  // Cálculos Google Ads
-  const gCpa = gConvs > 0 ? gInvest / gConvs : 0;
-  document.getElementById('c-gads-investimento').innerText = `R$ ${gInvest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
-  document.getElementById('c-gads-cliques').innerText = gClicks.toLocaleString('pt-BR');
-  document.getElementById('c-gads-conversoes').innerText = gConvs.toLocaleString('pt-BR');
-  document.getElementById('c-gads-cpa').innerText = gCpa > 0 ? `R$ ${gCpa.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '—';
+  renderAdsPlatformCards(byPlatform, platformOrder);
 
-  // Cálculos Meta Ads
-  const mCpa = mConvs > 0 ? mInvest / mConvs : 0;
-  document.getElementById('c-mads-investimento').innerText = `R$ ${mInvest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}`;
-  document.getElementById('c-mads-cliques').innerText = mClicks.toLocaleString('pt-BR');
-  document.getElementById('c-mads-conversoes').innerText = mConvs.toLocaleString('pt-BR');
-  document.getElementById('c-mads-cpa').innerText = mCpa > 0 ? `R$ ${mCpa.toLocaleString('pt-BR', {minimumFractionDigits: 2})}` : '—';
+  const labelEl = document.getElementById('c-ads-platforms-label');
+  if (labelEl) labelEl.innerText = platformOrder.length ? platformOrder.join(' & ') : 'Nenhuma plataforma';
+}
+
+// Constrói um card por plataforma detectada nas campanhas do cliente.
+function renderAdsPlatformCards(byPlatform, platformOrder) {
+  const grid = document.getElementById('c-ads-platforms-grid');
+  if (!grid) return;
+  grid.innerHTML = '';
+
+  platformOrder.forEach((platform, i) => {
+    const stats = byPlatform[platform];
+    const platCpa = stats.convs > 0 ? stats.invest / stats.convs : 0;
+    const color = getPlatformColor(platform, i);
+
+    const card = document.createElement('div');
+    card.className = 'metric-card';
+    card.style.borderLeft = `3px solid ${color}`;
+    card.style.gap = '10px';
+    card.innerHTML = `
+      <span class="card-title" style="display: flex; align-items: center; gap: 6px;">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background-color: ${color};"></span>
+        ${escapeHtml(platform)}
+      </span>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 4px;">
+        <div>
+          <span class="card-title" style="font-size: 9px;">Investimento</span>
+          <div class="card-value" style="font-size: 16px; margin-top: 2px;">R$ ${stats.invest.toLocaleString('pt-BR', {minimumFractionDigits: 2})}</div>
+        </div>
+        <div>
+          <span class="card-title" style="font-size: 9px;">Cliques</span>
+          <div class="card-value" style="font-size: 16px; margin-top: 2px;">${stats.clicks.toLocaleString('pt-BR')}</div>
+        </div>
+        <div>
+          <span class="card-title" style="font-size: 9px;">Conversões</span>
+          <div class="card-value highlight-green" style="font-size: 16px; margin-top: 2px;">${stats.convs.toLocaleString('pt-BR')}</div>
+        </div>
+        <div>
+          <span class="card-title" style="font-size: 9px;">CPA</span>
+          <div class="card-value" style="font-size: 16px; margin-top: 2px;">${platCpa > 0 ? 'R$ ' + platCpa.toLocaleString('pt-BR', {minimumFractionDigits: 2}) : '—'}</div>
+        </div>
+      </div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+// Monta as abas rápidas (Todas + uma por plataforma) e as opções do select
+// de plataforma da tabela, a partir das campanhas reais do cliente.
+function renderAdsPlatformFilters() {
+  const platforms = [...new Set(clientCampaigns.map(c => c.platform))];
+
+  const tabsContainer = document.getElementById('c-ads-platform-tabs');
+  if (tabsContainer) {
+    tabsContainer.innerHTML = `<button class="filter-btn active" id="c-ads-tab-todas" onclick="filterAdsPlatform('Todas', this)">Todas</button>`;
+    platforms.forEach(p => {
+      const btn = document.createElement('button');
+      btn.className = 'filter-btn';
+      btn.innerText = p;
+      btn.onclick = () => filterAdsPlatform(p, btn);
+      tabsContainer.appendChild(btn);
+    });
+  }
+
+  const select = document.getElementById('filter-camp-platform');
+  if (select) {
+    const current = select.value;
+    select.innerHTML = `<option value="Todas">Plataforma (Todas)</option>`;
+    platforms.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p;
+      opt.innerText = p;
+      select.appendChild(opt);
+    });
+    select.value = platforms.includes(current) ? current : 'Todas';
+  }
 }
 
 // Renderiza o gráfico SVG de evolução diária Investimento x Conversão
