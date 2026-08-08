@@ -4953,6 +4953,262 @@ function filterColaboradores(query) {
   renderColaboradores(filtered);
 }
 
+// --------------------------------------------------
+// Campos Personalizados / "Solicitar dados" (por cliente)
+// --------------------------------------------------
+// Estrutura flexível (EAV): custom_fields define o campo (nome, tipo,
+// frequência...), custom_field_values guarda os valores preenchidos — nunca
+// cria coluna física nova no banco por campo. O mesmo par de tabelas
+// alimenta o portal-cliente.html/js (Dashboard Filho separado).
+
+const CUSTOM_FIELD_TYPE_LABELS = {
+  number: 'Número',
+  currency: 'Moeda',
+  percentage: 'Percentual',
+  text_short: 'Texto curto',
+  text_long: 'Texto longo',
+  date: 'Data',
+  boolean: 'Sim/Não',
+  single_select: 'Seleção única',
+  multi_select: 'Seleção múltipla'
+};
+
+const CUSTOM_FIELD_FREQUENCY_LABELS = {
+  daily: 'Diário',
+  weekly: 'Semanal',
+  biweekly: 'Quinzenal',
+  monthly: 'Mensal',
+  on_demand: 'Sob demanda'
+};
+
+let activeCustomFields = [];
+let activeCustomFieldValues = [];
+let customFieldFormOptions = [];
+
+async function openCustomFieldsModal() {
+  if (!currentClient) return;
+  document.getElementById('custom-fields-client-label').innerText = `Defina quais informações ${currentClient} precisa preencher`;
+  document.getElementById('custom-fields-modal').style.display = 'flex';
+  await loadCustomFieldsForClient(currentClient);
+}
+
+function closeCustomFieldsModal() {
+  document.getElementById('custom-fields-modal').style.display = 'none';
+}
+
+async function loadCustomFieldsForClient(clientName) {
+  const slug = clientSlugFromName(clientName) || slugify(clientName);
+  const list = document.getElementById('custom-fields-list');
+  list.innerHTML = '<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 20px;">Carregando...</div>';
+
+  const [{ data: fields, error: fieldsError }, { data: values, error: valuesError }] = await Promise.all([
+    supabaseClient.from('custom_fields').select('*').eq('client_slug', slug).order('position').order('created_at'),
+    supabaseClient.from('custom_field_values').select('*').eq('client_slug', slug).order('submitted_at', { ascending: false })
+  ]);
+
+  if (fieldsError) console.error('Erro ao carregar campos personalizados', fieldsError);
+  if (valuesError) console.error('Erro ao carregar valores de campos personalizados', valuesError);
+
+  activeCustomFields = fields || [];
+  activeCustomFieldValues = values || [];
+
+  renderCustomFieldsList();
+}
+
+function getLatestValueForField(fieldId) {
+  return activeCustomFieldValues.find(v => v.field_id === fieldId) || null;
+}
+
+function formatCustomFieldValue(field, value) {
+  if (!value) return null;
+  if (field.field_type === 'currency' && value.value_number !== null) {
+    return `R$ ${Number(value.value_number).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  }
+  if (field.field_type === 'percentage' && value.value_number !== null) {
+    return `${Number(value.value_number).toLocaleString('pt-BR')}%`;
+  }
+  if (field.field_type === 'number' && value.value_number !== null) {
+    return Number(value.value_number).toLocaleString('pt-BR');
+  }
+  if (field.field_type === 'boolean') {
+    return value.value_boolean ? 'Sim' : 'Não';
+  }
+  if (field.field_type === 'date' && value.value_date) {
+    return formatDate(new Date(value.value_date + 'T00:00:00'));
+  }
+  if (field.field_type === 'multi_select' && value.value_options) {
+    return (value.value_options || []).join(', ');
+  }
+  return value.value_text || '—';
+}
+
+function renderCustomFieldsList() {
+  const list = document.getElementById('custom-fields-list');
+  list.innerHTML = '';
+
+  if (activeCustomFields.length === 0) {
+    list.innerHTML = `<div style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 24px; border: 1px dashed var(--border-color); border-radius: var(--border-radius-sm);">Nenhum campo personalizado ainda. Clique em "+ Novo campo" pra pedir o primeiro dado a este cliente.</div>`;
+    return;
+  }
+
+  activeCustomFields.forEach(field => {
+    const lastValue = getLatestValueForField(field.id);
+    const lastValueText = lastValue ? formatCustomFieldValue(field, lastValue) : null;
+
+    const row = document.createElement('div');
+    row.style.cssText = 'border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; background: rgba(255,255,255,0.01);';
+
+    row.innerHTML = `
+      <div style="min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <span style="font-weight: 600; font-size: 13px; color: var(--text-primary);">${escapeHtml(field.name)}</span>
+          <span class="table-badge healthy" style="font-size: 9px;">${CUSTOM_FIELD_TYPE_LABELS[field.field_type] || field.field_type}</span>
+          <span style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">${CUSTOM_FIELD_FREQUENCY_LABELS[field.frequency] || field.frequency}</span>
+          ${field.required ? '<span style="font-size: 9px; color: var(--color-red);">Obrigatório</span>' : ''}
+        </div>
+        ${field.description ? `<div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(field.description)}</div>` : ''}
+        <div style="font-size: 9px; color: var(--text-muted); margin-top: 4px;">${lastValueText ? `Último preenchimento: ${escapeHtml(lastValueText)} (${formatDate(new Date(lastValue.submitted_at))})` : 'Ainda sem preenchimentos'}</div>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0;">
+        <span class="table-badge ${field.active ? 'healthy' : 'critical'}" style="cursor: pointer;" title="Clique para ${field.active ? 'desativar' : 'ativar'}" onclick="toggleCustomFieldActive('${field.id}', ${!field.active})">${field.active ? 'Ativo' : 'Inativo'}</span>
+        <button class="colab-btn-edit" onclick="openCustomFieldForm('${field.id}')">Editar</button>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+async function toggleCustomFieldActive(id, newActive) {
+  const { error } = await supabaseClient.from('custom_fields').update({ active: newActive }).eq('id', id);
+  if (error) {
+    console.error('Erro ao atualizar campo', error);
+    showToast('Não foi possível atualizar o campo.');
+    return;
+  }
+  const field = activeCustomFields.find(f => f.id === id);
+  if (field) field.active = newActive;
+  renderCustomFieldsList();
+}
+
+function openCustomFieldForm(fieldId) {
+  document.getElementById('custom-field-form').reset();
+  customFieldFormOptions = [];
+
+  if (fieldId) {
+    const field = activeCustomFields.find(f => f.id === fieldId);
+    if (!field) return;
+    document.getElementById('custom-field-form-title').innerText = 'Editar campo personalizado';
+    document.getElementById('cf-id').value = field.id;
+    document.getElementById('cf-name').value = field.name;
+    document.getElementById('cf-description').value = field.description || '';
+    document.getElementById('cf-type').value = field.field_type;
+    document.getElementById('cf-frequency').value = field.frequency;
+    document.getElementById('cf-category').value = field.category || '';
+    document.getElementById('cf-unit').value = field.unit || '';
+    document.getElementById('cf-required').value = field.required ? 'true' : 'false';
+    document.getElementById('cf-active').value = field.active ? 'true' : 'false';
+    document.getElementById('cf-metric-mapping').value = field.metric_mapping || 'none';
+    customFieldFormOptions = Array.isArray(field.options) ? [...field.options] : [];
+  } else {
+    document.getElementById('custom-field-form-title').innerText = 'Novo campo personalizado';
+    document.getElementById('cf-id').value = '';
+    document.getElementById('cf-required').value = 'true';
+    document.getElementById('cf-active').value = 'true';
+  }
+
+  handleCustomFieldTypeChange();
+  renderCustomFieldOptionsList();
+  document.getElementById('custom-field-form-modal').style.display = 'flex';
+}
+
+function closeCustomFieldForm() {
+  document.getElementById('custom-field-form-modal').style.display = 'none';
+}
+
+function handleCustomFieldTypeChange() {
+  const type = document.getElementById('cf-type').value;
+  const group = document.getElementById('cf-options-group');
+  group.style.display = (type === 'single_select' || type === 'multi_select') ? 'block' : 'none';
+}
+
+function addCustomFieldOption() {
+  customFieldFormOptions.push('');
+  renderCustomFieldOptionsList();
+}
+
+function updateCustomFieldOption(index, value) {
+  customFieldFormOptions[index] = value;
+}
+
+function removeCustomFieldOption(index) {
+  customFieldFormOptions.splice(index, 1);
+  renderCustomFieldOptionsList();
+}
+
+function renderCustomFieldOptionsList() {
+  const container = document.getElementById('cf-options-list');
+  container.innerHTML = '';
+  customFieldFormOptions.forEach((opt, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display: flex; gap: 6px; align-items: center;';
+    row.innerHTML = `
+      <input type="text" class="form-input" value="${escapeHtml(opt)}" placeholder="Opção ${i + 1}" style="flex-grow: 1;" oninput="updateCustomFieldOption(${i}, this.value)">
+      <span onclick="removeCustomFieldOption(${i})" style="cursor: pointer; color: var(--text-muted); font-size: 14px; padding: 0 4px;">&times;</span>
+    `;
+    container.appendChild(row);
+  });
+}
+
+async function saveCustomField(event) {
+  event.preventDefault();
+  if (!currentClient) return;
+
+  const slug = clientSlugFromName(currentClient) || slugify(currentClient);
+  const idVal = document.getElementById('cf-id').value;
+  const type = document.getElementById('cf-type').value;
+  const isSelect = type === 'single_select' || type === 'multi_select';
+  const options = isSelect ? customFieldFormOptions.map(o => o.trim()).filter(Boolean) : null;
+
+  if (isSelect && (!options || options.length < 2)) {
+    showToast('Adicione pelo menos 2 opções para esse tipo de campo.');
+    return;
+  }
+
+  const payload = {
+    client_slug: slug,
+    name: document.getElementById('cf-name').value.trim(),
+    description: document.getElementById('cf-description').value.trim() || null,
+    field_type: type,
+    options: options,
+    frequency: document.getElementById('cf-frequency').value,
+    required: document.getElementById('cf-required').value === 'true',
+    category: document.getElementById('cf-category').value.trim() || null,
+    unit: document.getElementById('cf-unit').value.trim() || null,
+    metric_mapping: document.getElementById('cf-metric-mapping').value,
+    active: document.getElementById('cf-active').value === 'true'
+  };
+
+  let error;
+  if (idVal) {
+    ({ error } = await supabaseClient.from('custom_fields').update(payload).eq('id', idVal));
+  } else {
+    payload.position = activeCustomFields.length;
+    const { data: userData } = await supabaseClient.auth.getUser();
+    payload.created_by = userData && userData.user ? userData.user.email : null;
+    ({ error } = await supabaseClient.from('custom_fields').insert(payload));
+  }
+
+  if (error) {
+    console.error('Erro ao salvar campo personalizado', error);
+    showToast('Não foi possível salvar o campo.');
+    return;
+  }
+
+  closeCustomFieldForm();
+  showToast(idVal ? 'Campo atualizado!' : 'Campo criado! Já aparece no portal do cliente.');
+  await loadCustomFieldsForClient(currentClient);
+}
+
 // Adiciona os novos clientes mockados à base de dados para garantir que funcionem ao serem selecionados
 clientDetailedData["Nexa Edu"] = {
   segment: "Tecnologia/Educação",

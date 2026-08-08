@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRATA - Portal do Cliente</title>
+  <!--
+    Dashboard Filho (MVP) — pensado pra um dia virar um deploy Vercel próprio,
+    servindo só este arquivo + portal-cliente.js + style.css, apontando pro
+    MESMO Supabase do PRATA (nunca um banco separado). Ver aviso de segurança
+    no topo de portal-cliente.js antes de divulgar este link publicamente.
+  -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body.portal-body {
+      display: block;
+      height: auto;
+      min-height: 100vh;
+      overflow-x: hidden;
+      overflow-y: auto;
+    }
+    .portal-wrapper {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 32px 20px 60px;
+    }
+    .portal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 28px;
+    }
+    .portal-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .portal-logo img { width: 30px; height: 30px; }
+    .portal-logo span {
+      font-family: var(--font-family-title);
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+    .portal-field-item {
+      border: 1px solid var(--border-color);
+      border-radius: var(--border-radius-sm);
+      padding: 14px 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255,255,255,0.01);
+      margin-bottom: 10px;
+      cursor: pointer;
+      transition: var(--transition-fast);
+    }
+    .portal-field-item:hover { border-color: var(--border-color-hover); }
+    .portal-field-item.filled { cursor: default; }
+    .portal-field-item.filled:hover { border-color: var(--border-color); }
+  </style>
+</head>
+<body class="portal-body">
+  <div id="portal-loading" style="text-align: center; padding: 80px 20px; color: var(--text-secondary); font-size: 13px;">Carregando...</div>
+
+  <div id="portal-error" style="display: none; text-align: center; padding: 80px 20px;">
+    <span style="font-size: 32px; display: block; margin-bottom: 12px;">🔒</span>
+    <h2 style="font-family: var(--font-family-title); font-size: 15px; color: var(--text-primary); margin-bottom: 6px;">Link inválido</h2>
+    <p style="font-size: 12px; color: var(--text-secondary);">Não encontramos esse cliente. Confira o link enviado pela sua agência.</p>
+  </div>
+
+  <div id="portal-content" style="display: none;">
+    <div class="portal-wrapper">
+      <header class="portal-header">
+        <div class="portal-logo">
+          <img src="logo.png" alt="PRATA">
+          <span>PRATA</span>
+        </div>
+        <button class="header-ctrl-btn" id="portal-theme-toggle" onclick="togglePortalTheme()" style="width: auto; padding: 0 10px; height: 32px;">☀</button>
+      </header>
+
+      <div style="margin-bottom: 28px;">
+        <h1 class="header-welcome" id="portal-client-name" style="font-size: 20px;">Cliente</h1>
+        <span class="header-meta" id="portal-client-meta">Portal do cliente</span>
+      </div>
+
+      <!-- Dados solicitados pela agência -->
+      <section class="table-card" style="margin-bottom: 20px;">
+        <h2 class="section-heading" style="margin-bottom: 4px;">Dados solicitados pela agência</h2>
+        <p style="font-size: 11px; color: var(--text-secondary); margin-bottom: 16px;">Preencha as informações abaixo para manter suas análises sempre atualizadas.</p>
+
+        <div id="portal-pending-section">
+          <h3 style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--color-yellow); text-transform: uppercase; margin-bottom: 8px;">Pendente</h3>
+          <div id="portal-pending-list"></div>
+        </div>
+
+        <div id="portal-filled-section" style="margin-top: 20px;">
+          <h3 style="font-size: 10px; font-weight: 700; letter-spacing: 0.5px; color: var(--color-green); text-transform: uppercase; margin-bottom: 8px;">Preenchido</h3>
+          <div id="portal-filled-list"></div>
+        </div>
+
+        <div id="portal-empty-state" style="display: none; text-align: center; padding: 30px; color: var(--text-muted); font-size: 12px;">
+          Sua agência ainda não solicitou nenhum dado por aqui.
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- MODAL: PREENCHER CAMPO -->
+  <div id="portal-fill-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="portal-fill-title">Campo</h3>
+        <button class="modal-close-btn" onclick="closePortalFillModal()">&times;</button>
+      </div>
+      <p style="font-size: 12px; color: var(--text-secondary); margin-top: -10px;" id="portal-fill-description"></p>
+      <div style="font-size: 11px; color: var(--text-muted);">Período: <strong id="portal-fill-period"></strong></div>
+
+      <form id="portal-fill-form" onsubmit="submitPortalFieldValue(event)">
+        <div class="form-group">
+          <label class="form-label">Resposta</label>
+          <div id="portal-fill-input-container"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="form-btn-secondary" onclick="closePortalFillModal()">Cancelar</button>
+          <button type="submit" class="form-btn-primary">Salvar informação</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="portal-cliente.js"></script>
+</body>
+</html>
