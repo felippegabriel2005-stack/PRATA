@@ -1901,8 +1901,8 @@ function toggleClientExpand(clientName) {
   } else {
     container.classList.remove('expanded');
     menu.style.display = 'none';
-    // Collapse goes back to parent dashboard or stays on general
-    showDashboardPai();
+    // Recolher o submenu só esconde as sub-análises na sidebar — não navega
+    // pra fora da Visão geral do cliente que já está aberta.
   }
 }
 
