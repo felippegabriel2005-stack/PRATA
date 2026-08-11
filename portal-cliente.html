@@ -58,6 +58,20 @@
     .portal-field-item:hover { border-color: var(--border-color-hover); }
     .portal-field-item.filled { cursor: default; }
     .portal-field-item.filled:hover { border-color: var(--border-color); }
+
+    /* .metrics-row-six vem do app principal pensado pra tela cheia (6
+       colunas conforme a LARGURA DA JANELA, não do container) — aqui o
+       conteúdo fica numa coluna estreita de 720px, então força menos
+       colunas sempre, senão os valores (ex: "R$155k") ficam cortados. */
+    .portal-wrapper .metrics-row-six {
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 480px) {
+      .portal-wrapper .metrics-row-six {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
   </style>
 </head>
 <body class="portal-body">
@@ -79,10 +93,93 @@
         <button class="header-ctrl-btn" id="portal-theme-toggle" onclick="togglePortalTheme()" style="width: auto; padding: 0 10px; height: 32px;">☀</button>
       </header>
 
-      <div style="margin-bottom: 28px;">
-        <h1 class="header-welcome" id="portal-client-name" style="font-size: 20px;">Cliente</h1>
-        <span class="header-meta" id="portal-client-meta">Portal do cliente</span>
+      <div style="margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">
+        <div>
+          <h1 class="header-welcome" id="portal-client-name" style="font-size: 20px;">Cliente</h1>
+          <span class="header-meta" id="portal-client-meta">Portal do cliente</span>
+        </div>
+        <span class="table-badge healthy" id="portal-status-badge" style="font-size: 11px; padding: 5px 12px; flex-shrink: 0;">Saudável</span>
       </div>
+
+      <!-- Big Numbers (mesmos 6 cards do Dashboard Filho da agência) -->
+      <section class="metrics-row-six" style="margin-bottom: 20px;">
+        <div class="metric-card">
+          <span class="card-title">Investimento</span>
+          <div class="card-value" id="portal-num-investimento">—</div>
+        </div>
+        <div class="metric-card">
+          <span class="card-title">Receita</span>
+          <div class="card-value highlight-green" id="portal-num-receita">—</div>
+        </div>
+        <div class="metric-card">
+          <span class="card-title">Conversão</span>
+          <div class="card-value" id="portal-num-conversao">—</div>
+        </div>
+        <div class="metric-card">
+          <span class="card-title">CPL</span>
+          <div class="card-value" id="portal-num-cpl">—</div>
+        </div>
+        <div class="metric-card">
+          <span class="card-title">CPA</span>
+          <div class="card-value" id="portal-num-cpa">—</div>
+        </div>
+        <div class="metric-card">
+          <span class="card-title" id="portal-roi-title">ROI</span>
+          <div class="card-value highlight-green" id="portal-num-roi">—</div>
+        </div>
+      </section>
+
+      <!-- Insights de IA -->
+      <section class="mrr-card" id="portal-insights-section" style="justify-content: flex-start; gap: 12px; margin-bottom: 20px; display: none;">
+        <h2 class="section-heading">✦ Insights de IA</h2>
+        <div class="insights-container" style="margin-top: 8px;">
+          <ul class="insights-list" id="portal-insights-list" style="list-style: none; display: flex; flex-direction: column; gap: 12px; font-size: 12px; color: var(--text-primary);"></ul>
+        </div>
+      </section>
+
+      <!-- Funil do Cliente -->
+      <section class="table-card" id="portal-funnel-section" style="margin-bottom: 20px; display: none;">
+        <h2 class="section-heading">Funil do cliente</h2>
+        <div class="funnel-card">
+          <div class="funnel-grid">
+            <div class="funnel-step">
+              <span class="funnel-step-label">Em Abordagem</span>
+              <span class="funnel-step-value" id="portal-funnel-val-1">—</span>
+            </div>
+            <div class="funnel-step">
+              <span class="funnel-step-label">Qualificados</span>
+              <span class="funnel-step-value" id="portal-funnel-val-2">—</span>
+            </div>
+            <div class="funnel-step">
+              <span class="funnel-step-label">Propostas</span>
+              <span class="funnel-step-value" id="portal-funnel-val-3">—</span>
+            </div>
+            <div class="funnel-step">
+              <span class="funnel-step-label">Vendas</span>
+              <span class="funnel-step-value" id="portal-funnel-val-4">—</span>
+            </div>
+          </div>
+
+          <div class="funnel-bar-container">
+            <div class="funnel-segment" style="width: 40%;">
+              <div class="funnel-segment-fill"></div>
+              <div class="conversion-badge" id="portal-funnel-pct-1">100%</div>
+            </div>
+            <div class="funnel-segment" style="width: 30%;">
+              <div class="funnel-segment-fill"></div>
+              <div class="conversion-badge" id="portal-funnel-pct-2">0%</div>
+            </div>
+            <div class="funnel-segment" style="width: 25%;">
+              <div class="funnel-segment-fill"></div>
+              <div class="conversion-badge" id="portal-funnel-pct-3">0%</div>
+            </div>
+            <div class="funnel-segment" style="width: 5%;">
+              <div class="funnel-segment-fill"></div>
+              <div class="final-conversion-badge" id="portal-funnel-pct-final">0% final</div>
+            </div>
+          </div>
+        </div>
+      </section>
 
       <!-- Dados solicitados pela agência -->
       <section class="table-card" style="margin-bottom: 20px;">

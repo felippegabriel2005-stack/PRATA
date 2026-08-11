@@ -137,7 +137,10 @@ async function initPortal() {
   document.getElementById('portal-client-name').innerText = client.name;
   document.getElementById('portal-client-meta').innerText = `Portal do cliente · ${formatDateBR(new Date())}`;
 
-  await loadPortalFields();
+  await Promise.all([
+    loadClientDashboardData(),
+    loadPortalFields()
+  ]);
 
   document.getElementById('portal-loading').style.display = 'none';
   document.getElementById('portal-content').style.display = 'block';
@@ -146,6 +149,148 @@ async function initPortal() {
 function showPortalError() {
   document.getElementById('portal-loading').style.display = 'none';
   document.getElementById('portal-error').style.display = 'block';
+}
+
+function formatCurrencyPortal(val) {
+  return 'R$' + Math.round(val).toLocaleString('pt-BR');
+}
+
+function formatCurrencyThousandsPortal(val) {
+  return `R$${Math.round(val / 1000)}k`;
+}
+
+// Mesma regra do painel da agência (script.js: computeClientStatusFromData) —
+// duplicada aqui de propósito, já que este portal é pensado pra um dia rodar
+// como projeto Vercel separado, sem depender do script.js da agência.
+function computePortalClientStatus(raw, targetsRows) {
+  const reasons = [];
+  let severity = 0;
+
+  if (raw.invest > 0) {
+    const roi = ((raw.revenue - raw.invest) / raw.invest) * 100;
+    if (roi < 0) {
+      severity = Math.max(severity, 2);
+    } else if (roi < 50) {
+      severity = Math.max(severity, 1);
+    }
+    if (raw.conversions === 0) {
+      severity = Math.max(severity, 2);
+    }
+  }
+
+  const actualByMetric = {
+    invest: raw.invest,
+    impress: raw.impressions,
+    clicks: raw.clicks,
+    views: raw.pageViews,
+    convs: raw.conversions,
+    cpa: raw.conversions > 0 ? raw.invest / raw.conversions : null,
+    cpc: raw.clicks > 0 ? raw.invest / raw.clicks : null,
+    cpm: raw.impressions > 0 ? (raw.invest / raw.impressions) * 1000 : null,
+    ctr: raw.impressions > 0 ? (raw.clicks / raw.impressions) * 100 : null,
+    convrate: raw.pageViews > 0 ? (raw.conversions / raw.pageViews) * 100 : null
+  };
+
+  (targetsRows || []).forEach(t => {
+    const actual = actualByMetric[t.metric_name];
+    const target = Number(t.target_value);
+    if (actual === null || actual === undefined || !target) return;
+
+    const rule = t.rule || '';
+    let ratio = null;
+    if (rule.includes('Menor')) ratio = actual / target;
+    else if (rule.includes('Maior')) ratio = target / actual;
+    if (ratio === null) return;
+
+    if (ratio > 1.3) severity = Math.max(severity, 2);
+    else if (ratio > 1.1) severity = Math.max(severity, 1);
+  });
+
+  return severity === 2 ? 'critical' : severity === 1 ? 'attention' : 'healthy';
+}
+
+// Mesma matriz que a agência vê no Dashboard Filho: KPIs, Insights de IA
+// (reaproveita o cache já gerado em client_ai_insights — não chama a IA de
+// novo daqui) e Funil do cliente, calculados a partir do campaign_metrics
+// real desse cliente.
+async function loadClientDashboardData() {
+  const [{ data: campaigns }, { data: targets }, { data: aiInsightRow }] = await Promise.all([
+    supabaseClient.from('campaign_metrics').select('*').eq('client_slug', portalClientSlug),
+    supabaseClient.from('targets').select('*').eq('client_slug', portalClientSlug),
+    supabaseClient.from('client_ai_insights').select('insights').eq('client_slug', portalClientSlug).maybeSingle()
+  ]);
+
+  const rows = campaigns || [];
+  let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
+  rows.forEach(c => {
+    totalInvest += Number(c.invest) || 0;
+    totalImpress += Number(c.impressions) || 0;
+    totalClicks += Number(c.clicks) || 0;
+    totalPageViews += Number(c.page_views) || 0;
+    totalLeads += Number(c.leads) || 0;
+    totalConvs += Number(c.conversions) || 0;
+    totalRevenue += Number(c.revenue) || 0;
+  });
+
+  const conversaoPct = totalClicks > 0 ? (totalConvs / totalClicks) * 100 : 0;
+  const cpl = totalLeads > 0 ? totalInvest / totalLeads : 0;
+  const cpa = totalConvs > 0 ? totalInvest / totalConvs : 0;
+  const roi = totalInvest > 0 ? ((totalRevenue - totalInvest) / totalInvest) * 100 : 0;
+
+  document.getElementById('portal-num-investimento').innerText = formatCurrencyThousandsPortal(totalInvest);
+  document.getElementById('portal-num-receita').innerText = formatCurrencyThousandsPortal(totalRevenue);
+  document.getElementById('portal-num-conversao').innerText = `${conversaoPct.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+  document.getElementById('portal-num-cpl').innerText = totalLeads > 0 ? formatCurrencyPortal(cpl) : '—';
+  document.getElementById('portal-num-cpa').innerText = totalConvs > 0 ? formatCurrencyPortal(cpa) : '—';
+  document.getElementById('portal-num-roi').innerText = `${Math.round(roi)}%`;
+
+  const raw = { invest: totalInvest, revenue: totalRevenue, leads: totalLeads, impressions: totalImpress, clicks: totalClicks, pageViews: totalPageViews, conversions: totalConvs };
+  const status = computePortalClientStatus(raw, targets || []);
+  const statusLabels = { healthy: 'Saudável', attention: 'Atenção', critical: 'Crítico' };
+  const badge = document.getElementById('portal-status-badge');
+  badge.innerText = statusLabels[status];
+  badge.className = `table-badge ${status}`;
+
+  // Insights de IA — usa o cache já gerado pro painel da agência; se ainda
+  // não existir, cai num resumo simples calculado na hora (sem chamar IA).
+  const insightsSection = document.getElementById('portal-insights-section');
+  const insightsList = document.getElementById('portal-insights-list');
+  let insights = (aiInsightRow && Array.isArray(aiInsightRow.insights) && aiInsightRow.insights.length) ? aiInsightRow.insights : null;
+  if (!insights && rows.length > 0) {
+    insights = [
+      `Investimento total de ${formatCurrencyPortal(totalInvest)} gerou receita de ${formatCurrencyPortal(totalRevenue)} (ROI de ${Math.round(roi)}%).`,
+      `Taxa de conversão geral (cliques → conversões): ${conversaoPct.toFixed(1)}%.`,
+      `Custo por lead médio de ${totalLeads > 0 ? formatCurrencyPortal(cpl) : '—'} e custo por conversão de ${totalConvs > 0 ? formatCurrencyPortal(cpa) : '—'}.`
+    ];
+  }
+  if (insights && insights.length) {
+    insightsSection.style.display = 'flex';
+    insightsList.innerHTML = '';
+    insights.forEach(text => {
+      const li = document.createElement('li');
+      li.innerText = text;
+      insightsList.appendChild(li);
+    });
+  } else {
+    insightsSection.style.display = 'none';
+  }
+
+  // Funil do cliente
+  const funnelSection = document.getElementById('portal-funnel-section');
+  if (rows.length > 0) {
+    funnelSection.style.display = 'block';
+    document.getElementById('portal-funnel-val-1').innerText = Math.round(totalImpress).toLocaleString('pt-BR');
+    document.getElementById('portal-funnel-val-2').innerText = Math.round(totalClicks).toLocaleString('pt-BR');
+    document.getElementById('portal-funnel-val-3').innerText = Math.round(totalPageViews).toLocaleString('pt-BR');
+    document.getElementById('portal-funnel-val-4').innerText = Math.round(totalConvs).toLocaleString('pt-BR');
+
+    document.getElementById('portal-funnel-pct-1').innerText = '100%';
+    document.getElementById('portal-funnel-pct-2').innerText = totalImpress > 0 ? `${((totalClicks / totalImpress) * 100).toFixed(0)}%` : '0%';
+    document.getElementById('portal-funnel-pct-3').innerText = totalClicks > 0 ? `${((totalPageViews / totalClicks) * 100).toFixed(0)}%` : '0%';
+    document.getElementById('portal-funnel-pct-final').innerText = `${conversaoPct.toFixed(1)}% final`;
+  } else {
+    funnelSection.style.display = 'none';
+  }
 }
 
 async function loadPortalFields() {
