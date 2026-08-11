@@ -4592,11 +4592,6 @@ async function selectClient(clientName) {
   document.getElementById('c-owner').innerText = data.owner;
   document.getElementById('c-last-updated').innerText = data.updated;
   
-  // Badge de Status do Cliente
-  const badge = document.getElementById('c-status-badge');
-  badge.innerText = data.status;
-  badge.className = `table-badge ${data.statusClass}`;
-  
   // Filtro de Período do Cliente: pra cliente com dado real, sempre reabre
   // em "Todo período" (cobrindo do primeiro ao último registro real desse
   // cliente) — o intervalo fixo de demonstração (Maio/2025) não faz sentido
