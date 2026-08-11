@@ -95,7 +95,18 @@
           <img src="logo.png" alt="PRATA">
           <span>PRATA</span>
         </div>
-        <button class="header-ctrl-btn" id="portal-theme-toggle" onclick="togglePortalTheme()" style="width: auto; padding: 0 10px; height: 32px;">☀</button>
+        <div style="display: flex; align-items: center; gap: 8px; position: relative;">
+          <button class="header-ctrl-btn" id="portal-bell-btn" onclick="togglePortalBell(event)" style="width: auto; padding: 0 10px; height: 32px; position: relative;">
+            🔔
+            <span id="portal-bell-badge" style="display:none; position: absolute; top: -4px; right: -4px; background: var(--color-red); color: #fff; font-size: 9px; font-weight: 700; border-radius: 999px; min-width: 15px; height: 15px; line-height: 15px; text-align: center; padding: 0 3px;">0</span>
+          </button>
+          <div id="portal-bell-dropdown" style="display:none; position: absolute; top: 40px; right: 0; width: 300px; max-height: 360px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); box-shadow: 0 12px 32px rgba(0,0,0,0.5); z-index: 500; padding: 10px;">
+            <div style="font-size: 11px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Notificações</div>
+            <div id="portal-bell-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+            <div id="portal-bell-empty" style="display:none; font-size: 11px; color: var(--text-secondary); text-align: center; padding: 12px 0;">Nenhuma pendência. Você está em dia! ✓</div>
+          </div>
+          <button class="header-ctrl-btn" id="portal-theme-toggle" onclick="togglePortalTheme()" style="width: auto; padding: 0 10px; height: 32px;">☀</button>
+        </div>
       </header>
 
       <div style="margin-bottom: 20px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;">

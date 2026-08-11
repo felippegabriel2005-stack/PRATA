@@ -509,6 +509,22 @@ async function refreshClientDetailedDataIfReal(clientName) {
   // Sempre monta o dashboard a partir do que existir no banco (zerado se não
   // houver nada ainda) — não usa mais o mock fictício como fallback.
   const built = buildClientDetailedDataFromReal(campaigns || [], leadsRows || [], targetsRows || [], customFields || [], customFieldValues || []);
+
+  // Guarda dados "crus" e definições que o filtro de período (ver
+  // updateDashboardFilhoForCustomPeriod) precisa pra refazer o cálculo
+  // filtrando de verdade por data real (campaign_metrics.date e
+  // custom_field_values.period_date), em vez de aproximar por "fator".
+  built.slug = slug;
+  built.customFieldsDefs = customFields || [];
+  built.leadsRowsAll = leadsRows || [];
+  built.targetsRowsAll = targetsRows || [];
+  const allDates = [
+    ...(campaigns || []).map(c => c.date),
+    ...(customFieldValues || []).map(v => v.period_date)
+  ].filter(Boolean).map(d => new Date(d + 'T00:00:00')).filter(d => !isNaN(d));
+  built.earliestDate = allDates.length ? new Date(Math.min(...allDates)) : null;
+  built.latestDate = allDates.length ? new Date(Math.max(...allDates)) : null;
+
   clientDetailedData[clientName] = built;
 
   // Mantém o status do cliente na sidebar/Dashboard Pai em sincronia com o
@@ -769,6 +785,7 @@ async function refreshAgencyPeriodDataFromReal() {
       trendInvestimento: trendLabel,
       receita: formatCurrency(revenue),
       trendReceita: trendLabel,
+      vendas: formatNumber(sales),
       hasManualRevenue,
       hasManualSales,
       conversao: `${conv.toFixed(1)}%`,
@@ -2439,6 +2456,34 @@ function formatDate(date) {
   return `${d}/${m}/${y}`;
 }
 
+// yyyy-mm-dd local (sem fuso) — usado nos filtros gte/lte contra colunas
+// `date`/`period_date` do Supabase, que são DATE puro (sem hora).
+function formatDateISO(date) {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Bucket de período de um campo personalizado a partir da frequência — mesma
+// lógica do portal (portal-cliente.js), duplicada aqui pro painel da agência
+// (cálculo de pendências e status "em dia"/"atrasado" em Solicitar dados).
+function computePeriodDateForFrequency(frequency, refDate) {
+  const d = new Date(refDate);
+  d.setHours(0, 0, 0, 0);
+  if (frequency === 'weekly') {
+    const day = d.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diffToMonday);
+  } else if (frequency === 'biweekly') {
+    d.setDate(d.getDate() <= 15 ? 1 : 16);
+  } else if (frequency === 'monthly') {
+    d.setDate(1);
+  }
+  return d;
+}
+
 function parseDateStr(str) {
   const parts = str.split('/');
   if (parts.length === 3) {
@@ -2493,21 +2538,24 @@ function onPeriodInputChange(prefix) {
 
 function setPeriodPreset(prefix, preset) {
   const state = calendarStates[prefix];
-  const endDate = new Date(2025, 4, 31); // Maio 31, 2025 (data base de fechamento)
+  const endDate = new Date(); // hoje de verdade — não mais fixo em Maio/2025
+  endDate.setHours(0, 0, 0, 0);
   let startDate;
-  
+
   if (preset === 'all') {
-    startDate = new Date(2025, 4, 1);
+    // "Todo período": data bem antiga garante cobrir qualquer dado real
+    // (equivalente a não filtrar, já que gte/lte contra ela sempre bate).
+    startDate = new Date(2000, 0, 1);
   } else {
     const days = parseInt(preset);
-    startDate = new Date(2025, 4, 31);
+    startDate = new Date(endDate);
     startDate.setDate(startDate.getDate() - (days - 1));
   }
-  
+
   state.startDate = startDate;
   state.endDate = endDate;
-  state.currentYear = 2025;
-  state.currentMonth = 4; // Maio
+  state.currentYear = endDate.getFullYear();
+  state.currentMonth = endDate.getMonth();
   
   document.getElementById(`${prefix}-period-start`).value = formatDate(startDate);
   document.getElementById(`${prefix}-period-end`).value = formatDate(endDate);
@@ -2593,11 +2641,42 @@ function updateDashboardPaiForCustomPeriod(startDate, endDate) {
   document.getElementById('funnel-val-4').innerText = currentSales.toLocaleString('pt-BR');
 }
 
-function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
+// Escreve no DOM os cards grandes + funil + seção de métricas comerciais do
+// Dashboard Filho a partir de um objeto já calculado (mesmo formato de
+// buildClientDetailedDataFromReal) — usado tanto no filtro de período quanto
+// (indiretamente) na carga inicial do cliente.
+function applyFilhoDashboardData(built) {
+  document.getElementById('c-num-investimento').innerText = built.metrics.investimento;
+  document.getElementById('c-num-receita').innerText = built.metrics.receita;
+
+  document.getElementById('c-funnel-val-1').innerText = built.funnel[0];
+  document.getElementById('c-funnel-val-2').innerText = built.funnel[1];
+  document.getElementById('c-funnel-val-3').innerText = built.funnel[2];
+  document.getElementById('c-funnel-val-4').innerText = built.funnel[3];
+  document.getElementById('c-funnel-pct-1').innerText = built.funnelPct[0];
+  document.getElementById('c-funnel-pct-2').innerText = built.funnelPct[1];
+  document.getElementById('c-funnel-pct-3').innerText = built.funnelPct[2];
+  document.getElementById('c-funnel-pct-final').innerText = built.funnelPct[3];
+
+  document.getElementById('c-num-cpl').innerText = built.metrics.cpl;
+  document.getElementById('c-num-cpa').innerText = built.metrics.cpa;
+
+  if (currentClient === "Volks B2B") {
+    document.getElementById('c-roi-title').innerText = "ROAS";
+    const roasVal = built.raw.invest > 0 ? (built.raw.revenue / built.raw.invest).toFixed(1) : '0.0';
+    document.getElementById('c-num-roi').innerText = `${roasVal}x`;
+  } else {
+    document.getElementById('c-roi-title').innerText = "ROI";
+    document.getElementById('c-num-roi').innerText = built.metrics.roi;
+  }
+
+  document.getElementById('c-num-conversao').innerText = built.metrics.conversao;
+
+  renderCommercialMetrics(built);
+}
+
+async function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
   if (!startDate || !endDate) return;
-  const diffTime = Math.abs(endDate - startDate);
-  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-  const factor = Math.min(1.0, diffDays / 31);
 
   const formattedPeriod = `${formatDate(startDate)} - ${formatDate(endDate)}`;
 
@@ -2610,73 +2689,40 @@ function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
   const clientData = clientDetailedData[currentClient];
   if (!clientData) return;
 
-  // Cliente com dado real importado: usa os números crus (sem reparsear
-  // texto formatado), com CPL = investimento / leads sempre, nunca
-  // impressões — e "—" só quando não há lead nenhum.
+  // Cliente com dado real importado: refiltra de verdade por data
+  // (campaign_metrics.date e custom_field_values.period_date) e reusa o
+  // mesmo cálculo da carga inicial — nada de aproximar por "fator de dias",
+  // que ignorava as datas reais das linhas.
   if (clientData.raw) {
-    const raw = clientData.raw;
-    const currentInvest = raw.invest * factor;
-    const currentReceita = raw.revenue * factor;
-    const currentLeads = raw.leads * factor;
-    const currentClicks = raw.clicks * factor;
-    const currentConvs = raw.conversions * factor;
-    const currentImpress = raw.impressions * factor;
-    const currentPageViews = raw.pageViews * factor;
-    const currentSales = (raw.sales !== null && raw.sales !== undefined) ? raw.sales * factor : null;
+    const clientAtRequest = currentClient;
+    const slug = clientData.slug || clientSlugFromName(currentClient) || slugify(currentClient);
+    const startISO = formatDateISO(startDate);
+    const endISO = formatDateISO(endDate);
 
-    document.getElementById('c-num-investimento').innerText = formatCurrencyThousands(currentInvest);
-    document.getElementById('c-num-receita').innerText = formatCurrencyThousands(currentReceita);
+    const [{ data: campaigns }, { data: cfValues }] = await Promise.all([
+      supabaseClient.from('campaign_metrics').select('*').eq('client_slug', slug).gte('date', startISO).lte('date', endISO),
+      supabaseClient.from('custom_field_values').select('*').eq('client_slug', slug).gte('period_date', startISO).lte('period_date', endISO)
+    ]);
 
-    // Estágio final do funil ("Vendas"): quando existe venda real mapeada,
-    // ela é o valor exibido/considerado — não o proxy de conversões de mídia.
-    const finalVal = currentSales !== null ? currentSales : currentConvs;
+    // Só recalcula se ainda estivermos olhando pro mesmo cliente quando a
+    // resposta chegar (evita sobrescrever a tela se o usuário já trocou de
+    // cliente enquanto a query estava em andamento).
+    if (currentClient !== clientAtRequest) return;
 
-    document.getElementById('c-funnel-val-1').innerText = Math.round(currentImpress).toLocaleString('pt-BR');
-    document.getElementById('c-funnel-val-2').innerText = Math.round(currentClicks).toLocaleString('pt-BR');
-    document.getElementById('c-funnel-val-3').innerText = Math.round(currentPageViews).toLocaleString('pt-BR');
-    document.getElementById('c-funnel-val-4').innerText = Math.round(finalVal).toLocaleString('pt-BR');
-
-    const cplVal = currentLeads > 0 ? currentInvest / currentLeads : 0;
-    const cpaVal = currentConvs > 0 ? currentInvest / currentConvs : 0;
-
-    document.getElementById('c-num-cpl').innerText = currentLeads > 0 ? formatCurrency(cplVal) : '—';
-    document.getElementById('c-num-cpa').innerText = currentConvs > 0 ? formatCurrency(cpaVal) : '—';
-
-    if (currentClient === "Volks B2B") {
-      document.getElementById('c-roi-title').innerText = "ROAS";
-      const roasVal = currentInvest > 0 ? (currentReceita / currentInvest).toFixed(1) : '0.0';
-      document.getElementById('c-num-roi').innerText = `${roasVal}x`;
-    } else {
-      document.getElementById('c-roi-title').innerText = "ROI";
-      const roiVal = currentInvest > 0 ? Math.round(((currentReceita - currentInvest) / currentInvest) * 100) : 0;
-      document.getElementById('c-num-roi').innerText = `${roiVal}%`;
-    }
-
-    const convVal = currentClicks > 0 ? ((currentConvs / currentClicks) * 100).toFixed(1) : '0.0';
-    document.getElementById('c-num-conversao').innerText = `${convVal}%`;
-
-    // Re-renderiza a seção de Métricas Comerciais com os valores escalados
-    // pro período selecionado (mesmo fator aplicado às demais métricas).
-    const scaledCommercial = {};
-    Object.keys(clientData.commercial || {}).forEach(type => {
-      scaledCommercial[type] = { value: clientData.commercial[type].value * factor, fieldNames: clientData.commercial[type].fieldNames };
-    });
-    const scaledRevenue = scaledCommercial.revenue ? scaledCommercial.revenue.value : null;
-    renderCommercialMetrics({
-      commercial: scaledCommercial,
-      customMetrics: (clientData.customMetrics || []).map(m => ({ ...m, value: m.value * factor })),
-      revenueSource: clientData.revenueSource,
-      salesResolved: currentSales,
-      commercialStats: {
-        custoPorVenda: currentSales > 0 ? currentInvest / currentSales : null,
-        taxaLeadVenda: currentSales !== null && currentLeads > 0 ? (currentSales / currentLeads) * 100 : null,
-        taxaCliqueVenda: currentSales !== null && currentClicks > 0 ? (currentSales / currentClicks) * 100 : null,
-        ticketMedio: currentSales > 0 && scaledRevenue !== null ? scaledRevenue / currentSales : null,
-        roas: scaledRevenue !== null && currentInvest > 0 ? scaledRevenue / currentInvest : null
-      }
-    });
+    const built = buildClientDetailedDataFromReal(
+      campaigns || [],
+      clientData.leadsRowsAll || [],
+      clientData.targetsRowsAll || [],
+      clientData.customFieldsDefs || [],
+      cfValues || []
+    );
+    applyFilhoDashboardData(built);
     return;
   }
+
+  const diffTime = Math.abs(endDate - startDate);
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+  const factor = Math.min(1.0, diffDays / 31);
 
   // Fallback (sem "raw" — dado fictício de demonstração antigo): não tem
   // campos personalizados, então a seção de Métricas Comerciais some.
@@ -4363,7 +4409,14 @@ async function selectClient(clientName) {
   badge.innerText = data.status;
   badge.className = `table-badge ${data.statusClass}`;
   
-  // Filtro de Período do Cliente (Mantém o estado atual selecionado para consistência)
+  // Filtro de Período do Cliente: pra cliente com dado real, sempre reabre
+  // em "Todo período" (cobrindo do primeiro ao último registro real desse
+  // cliente) — o intervalo fixo de demonstração (Maio/2025) não faz sentido
+  // pra dados reais, que podem estar em qualquer data.
+  if (data.raw) {
+    calendarStates['filho'].startDate = data.earliestDate || new Date();
+    calendarStates['filho'].endDate = data.latestDate || new Date();
+  }
   const state = calendarStates['filho'];
   const filhoPeriodText = document.getElementById('filho-period-btn-text');
   if (filhoPeriodText) filhoPeriodText.innerText = `${formatDate(state.startDate)} - ${formatDate(state.endDate)}`;
@@ -5298,6 +5351,7 @@ function renderCustomFieldsList() {
   activeCustomFields.forEach(field => {
     const lastValue = getLatestValueForField(field.id);
     const lastValueText = lastValue ? formatCustomFieldValue(field, lastValue) : null;
+    const todayStatus = field.active ? getCustomFieldStatusToday(field) : null;
 
     const row = document.createElement('div');
     row.style.cssText = 'border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 12px 14px; display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; background: rgba(255,255,255,0.01);';
@@ -5309,6 +5363,7 @@ function renderCustomFieldsList() {
           <span class="table-badge healthy" style="font-size: 9px;">${CUSTOM_FIELD_TYPE_LABELS[field.field_type] || field.field_type}</span>
           <span style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">${CUSTOM_FIELD_FREQUENCY_LABELS[field.frequency] || field.frequency}</span>
           ${field.required ? '<span style="font-size: 9px; color: var(--color-red);">Obrigatório</span>' : ''}
+          ${todayStatus ? `<span class="table-badge ${todayStatus.filled ? 'healthy' : 'attention'}" style="font-size: 9px;">${todayStatus.filled ? 'Preenchido' : 'Pendente'} (${todayStatus.periodLabel})</span>` : ''}
         </div>
         ${field.description ? `<div style="font-size: 10px; color: var(--text-secondary); margin-top: 4px;">${escapeHtml(field.description)}</div>` : ''}
         <div style="font-size: 9px; color: var(--text-muted); margin-top: 4px;">${lastValueText ? `Último preenchimento: ${escapeHtml(lastValueText)} (${formatDate(new Date(lastValue.submitted_at))})` : 'Ainda sem preenchimentos'}</div>
@@ -5320,6 +5375,20 @@ function renderCustomFieldsList() {
     `;
     list.appendChild(row);
   });
+}
+
+// Status "hoje" de um campo periódico: preenchido = já existe valor pro
+// bucket de período atual (mesma regra usada no portal pra decidir
+// pendência); "sob demanda" nunca gera pendência automática (MVP).
+function getCustomFieldStatusToday(field) {
+  const periodLabels = { daily: 'hoje', weekly: 'esta semana', biweekly: 'esta quinzena', monthly: 'este mês', on_demand: 'sob demanda' };
+  if (field.frequency === 'on_demand') {
+    const has = activeCustomFieldValues.some(v => v.field_id === field.id);
+    return { filled: has, periodLabel: periodLabels.on_demand };
+  }
+  const periodIso = formatDateISO(computePeriodDateForFrequency(field.frequency, new Date()));
+  const match = activeCustomFieldValues.find(v => v.field_id === field.id && v.period_date === periodIso);
+  return { filled: !!match, periodLabel: periodLabels[field.frequency] || field.frequency };
 }
 
 async function toggleCustomFieldActive(id, newActive) {
@@ -5361,6 +5430,7 @@ function openCustomFieldForm(fieldId) {
   }
 
   handleCustomFieldTypeChange();
+  handleCustomFieldFrequencyChange();
   renderCustomFieldOptionsList();
   document.getElementById('custom-field-form-modal').style.display = 'flex';
 }
@@ -5373,6 +5443,20 @@ function handleCustomFieldTypeChange() {
   const type = document.getElementById('cf-type').value;
   const group = document.getElementById('cf-options-group');
   group.style.display = (type === 'single_select' || type === 'multi_select') ? 'block' : 'none';
+}
+
+const CUSTOM_FIELD_FREQUENCY_HINTS = {
+  daily: 'Campos diários geram uma pendência automática todos os dias às 8h no Dashboard Filho (portal do cliente).',
+  weekly: 'Campos semanais geram uma pendência no início da semana (segunda-feira) às 8h.',
+  biweekly: 'Campos quinzenais geram uma pendência no início de cada quinzena (dia 1 e dia 16) às 8h.',
+  monthly: 'Campos mensais geram uma pendência no primeiro dia do mês às 8h.',
+  on_demand: 'Campos sob demanda não geram pendência automática — ficam disponíveis pro cliente preencher quando quiser.'
+};
+
+function handleCustomFieldFrequencyChange() {
+  const freq = document.getElementById('cf-frequency').value;
+  const hint = document.getElementById('cf-frequency-hint');
+  if (hint) hint.innerText = CUSTOM_FIELD_FREQUENCY_HINTS[freq] || '';
 }
 
 function addCustomFieldOption() {
@@ -5989,12 +6073,43 @@ function buildAssistantContext() {
 
   const agency = agencyPeriodData[currentPeriod];
   if (agency) {
-    lines.push(`Totais da agência no período "${currentPeriod}": Investimento ${agency.investimento}, Receita ${agency.receita}, Taxa de conversão ${agency.conversao}, CPL ${agency.cpl}, CPA ${agency.cpa}, ROI ${agency.roi}.`);
+    lines.push(`Totais da agência no período "${currentPeriod}": Investimento ${agency.investimento}, Receita ${agency.receita}, Vendas ${agency.vendas || '—'}${agency.hasManualSales ? ' (soma inclui vendas reais informadas manualmente por clientes no portal)' : ''}, Taxa de conversão ${agency.conversao}, CPL ${agency.cpl}, CPA ${agency.cpa}, ROI ${agency.roi}.`);
   }
 
   if (currentClient && clientDetailedData[currentClient]) {
     const d = clientDetailedData[currentClient];
-    lines.push(`Totais gerais (dashboard do cliente, todo o período) de ${currentClient}: Investimento ${d.metrics.investimento}, Receita ${d.metrics.receita}, Conversão ${d.metrics.conversao}, CPL ${d.metrics.cpl}, CPA ${d.metrics.cpa}, ROI ${d.metrics.roi}. (Se a tela atual for uma Análise específica com filtro de campanhas/período, use os valores da seção "Valores exibidos nessa tela agora" acima, que são mais precisos para o que o usuário está vendo.)`);
+    lines.push(`Totais gerais (dashboard do cliente, todo o período) de ${currentClient}: Investimento ${d.metrics.investimento}, Receita ${d.metrics.receita}, Conversão de mídia (cliques → conversões rastreadas pelos anúncios) ${d.metrics.conversao}, CPL ${d.metrics.cpl}, CPA ${d.metrics.cpa}, ROI ${d.metrics.roi}. (Se a tela atual for uma Análise específica com filtro de campanhas/período, use os valores da seção "Valores exibidos nessa tela agora" acima, que são mais precisos para o que o usuário está vendo.)`);
+
+    // Métricas comerciais informadas manualmente pelo cliente no portal
+    // (vendas, receita, propostas, etc.) — quando existir campo mapeado,
+    // esse é o dado OFICIAL, não o proxy de conversões de mídia acima.
+    // Deixamos isso bem explícito pra IA nunca confundir os dois conceitos.
+    if (d.commercial && Object.keys(d.commercial).length) {
+      const commercialLines = Object.keys(COMMERCIAL_METRIC_LABELS)
+        .filter(t => d.commercial[t])
+        .map(t => {
+          const label = COMMERCIAL_METRIC_LABELS[t];
+          const val = t === 'revenue' ? formatCurrency(d.commercial[t].value) : Math.round(d.commercial[t].value).toLocaleString('pt-BR');
+          return `${label}: ${val}`;
+        });
+      lines.push(`DADO OFICIAL informado pelo cliente ${currentClient} no portal (fonte manual, não é conversão de mídia): ${commercialLines.join('; ')}.`);
+    }
+    if (d.salesResolved !== null && d.salesResolved !== undefined) {
+      lines.push(`IMPORTANTE: quando perguntarem "quantas vendas" de ${currentClient}, a resposta é ${Math.round(d.salesResolved).toLocaleString('pt-BR')} (vendas reais informadas pelo cliente) — NÃO confundir com "Conversão"/CPA acima, que são métricas de mídia (rastreadas pelo anúncio, não são vendas confirmadas).`);
+    }
+    if (d.commercialStats) {
+      const s = d.commercialStats;
+      const statParts = [];
+      if (s.custoPorVenda !== null && s.custoPorVenda !== undefined) statParts.push(`Custo por venda: ${formatCurrency(s.custoPorVenda)}`);
+      if (s.taxaLeadVenda !== null && s.taxaLeadVenda !== undefined) statParts.push(`Taxa lead → venda: ${s.taxaLeadVenda.toFixed(1)}%`);
+      if (s.ticketMedio !== null && s.ticketMedio !== undefined) statParts.push(`Ticket médio: ${formatCurrency(s.ticketMedio)}`);
+      if (s.roas !== null && s.roas !== undefined) statParts.push(`ROAS: ${s.roas.toFixed(1)}x`);
+      if (statParts.length) lines.push(`Métricas comerciais derivadas de ${currentClient}: ${statParts.join(', ')}.`);
+    }
+    if (Array.isArray(d.customMetrics) && d.customMetrics.length) {
+      lines.push(`Métricas personalizadas (definidas pela agência) de ${currentClient}: ${d.customMetrics.map(m => `${m.name}: ${Math.round(m.value).toLocaleString('pt-BR')}${m.unit ? ' ' + m.unit : ''}`).join(', ')}.`);
+    }
+
     if (Array.isArray(d.insights) && d.insights.length) {
       lines.push(`Insights já calculados para ${currentClient}: ${d.insights.join(' ')}`);
     }

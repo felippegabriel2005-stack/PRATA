@@ -984,7 +984,64 @@ function renderPortalFields() {
     `;
     filledList.appendChild(item);
   });
+
+  renderPortalBell(pending);
 }
+
+const PORTAL_FREQUENCY_PERIOD_LABEL = {
+  daily: 'referente a hoje', weekly: 'referente a esta semana',
+  biweekly: 'referente a esta quinzena', monthly: 'referente a este mês', on_demand: ''
+};
+
+// Sino de notificações: mesma lista de pendências já calculada em
+// renderPortalFields (campo ativo + sem valor pro bucket de período atual),
+// sem tabela nova — calculada dinamicamente a cada carga do portal.
+function renderPortalBell(pending) {
+  const badge = document.getElementById('portal-bell-badge');
+  const list = document.getElementById('portal-bell-list');
+  const empty = document.getElementById('portal-bell-empty');
+  if (!badge || !list || !empty) return;
+
+  if (pending.length > 0) {
+    badge.style.display = 'block';
+    badge.innerText = pending.length;
+  } else {
+    badge.style.display = 'none';
+  }
+
+  list.innerHTML = '';
+  empty.style.display = pending.length ? 'none' : 'block';
+
+  pending.forEach(field => {
+    const item = document.createElement('div');
+    item.style.cssText = 'border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 8px 10px;';
+    item.innerHTML = `
+      <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${escapeHtml(field.name)}</div>
+      <div style="font-size: 10px; color: var(--text-secondary); margin: 2px 0 6px;">Preenchimento pendente ${PORTAL_FREQUENCY_PERIOD_LABEL[field.frequency] || ''}.</div>
+      <button class="colab-btn-edit" style="font-size: 10px;">Preencher agora</button>
+    `;
+    item.querySelector('button').onclick = () => {
+      document.getElementById('portal-bell-dropdown').style.display = 'none';
+      openPortalFillModal(field);
+    };
+    list.appendChild(item);
+  });
+}
+
+function togglePortalBell(event) {
+  if (event) event.stopPropagation();
+  const dropdown = document.getElementById('portal-bell-dropdown');
+  if (!dropdown) return;
+  dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+}
+
+document.addEventListener('click', function(event) {
+  const dropdown = document.getElementById('portal-bell-dropdown');
+  const btn = document.getElementById('portal-bell-btn');
+  if (dropdown && dropdown.style.display !== 'none' && !dropdown.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {
+    dropdown.style.display = 'none';
+  }
+});
 
 function openPortalFillModal(field) {
   portalActiveField = field;
