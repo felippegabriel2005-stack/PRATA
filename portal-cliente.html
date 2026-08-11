@@ -20,7 +20,7 @@
       overflow-y: auto;
     }
     .portal-wrapper {
-      max-width: 720px;
+      max-width: 960px;
       margin: 0 auto;
       padding: 32px 20px 60px;
     }
@@ -70,6 +70,28 @@
     @media (max-width: 480px) {
       .portal-wrapper .metrics-row-six {
         grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    /* Mesmo motivo: força colunas fixas independente da largura da janela */
+    .portal-wrapper .portal-metrics-row-five {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .portal-wrapper .portal-two-col {
+      grid-template-columns: 1fr 1fr;
+    }
+    @media (max-width: 640px) {
+      .portal-wrapper .portal-metrics-row-five,
+      .portal-wrapper .portal-evolution-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+      }
+      .portal-wrapper .portal-two-col {
+        grid-template-columns: 1fr !important;
+      }
+    }
+    @media (max-width: 420px) {
+      .portal-wrapper .portal-metrics-row-five {
+        grid-template-columns: 1fr !important;
       }
     }
   </style>
@@ -179,6 +201,130 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- Atualizações de dados -->
+      <section class="table-card" id="portal-updates-section" style="margin-bottom: 20px; display: none;">
+        <h2 class="section-heading">Atualizações de dados</h2>
+        <div class="table-wrapper">
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>Fonte de Dados</th>
+                <th>Última Atualização</th>
+                <th>Status</th>
+                <th>Observação</th>
+              </tr>
+            </thead>
+            <tbody id="portal-table-updates"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- Origem dos leads + Motivos de perda -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;" id="portal-source-loss-grid" class="portal-two-col">
+        <section class="table-card" id="portal-source-section" style="display: none;">
+          <h2 class="section-heading">Origem dos leads</h2>
+          <ul id="portal-leads-source-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;"></ul>
+        </section>
+        <section class="table-card" id="portal-loss-section" style="display: none;">
+          <h2 class="section-heading">Motivos de perda</h2>
+          <ul id="portal-leads-loss-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;"></ul>
+        </section>
+      </div>
+
+      <!-- Performance Ads -->
+      <section id="portal-ads-section" style="margin-bottom: 20px; display: none;">
+        <div class="section-heading-wrapper" style="align-items: center;">
+          <div>
+            <h2 class="section-heading">📢 Performance Ads</h2>
+            <span class="header-meta" style="font-size: 11px; margin-top: 2px; display: inline-block;"><span id="portal-ads-platforms-label">—</span></span>
+          </div>
+        </div>
+
+        <div class="metrics-row-five portal-metrics-row-five" style="margin-top: 12px;">
+          <div class="metric-card">
+            <span class="card-title">Investimento Total</span>
+            <div class="card-value" id="portal-ads-investimento">—</div>
+          </div>
+          <div class="metric-card">
+            <span class="card-title">Cliques</span>
+            <div class="card-value" id="portal-ads-cliques">—</div>
+          </div>
+          <div class="metric-card">
+            <span class="card-title">Conversões</span>
+            <div class="card-value highlight-green" id="portal-ads-conversoes">—</div>
+          </div>
+          <div class="metric-card">
+            <span class="card-title">CPA Médio</span>
+            <div class="card-value" id="portal-ads-cpa">—</div>
+          </div>
+          <div class="metric-card">
+            <span class="card-title">CTR Médio</span>
+            <div class="card-value" id="portal-ads-ctr">—</div>
+          </div>
+        </div>
+
+        <!-- Gráfico de Evolução Diária -->
+        <div class="table-card" style="margin-top: 16px;">
+          <h2 class="section-heading" style="font-size: 13px; display: flex; align-items: center; gap: 6px;">📈 Evolução Diária (Investimento &times; Conversões)</h2>
+          <div style="position: relative; width: 100%; margin-top: 20px;" id="portal-ads-chart-container"></div>
+          <div style="display: flex; justify-content: center; gap: 24px; font-size: 11px; margin-top: 16px; color: var(--text-secondary);">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 10px; height: 10px; background-color: #64748b; border-radius: 2px;"></span>
+              <span>Investimento</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="width: 10px; height: 10px; background-color: #10b981; border-radius: 50%;"></span>
+              <span>Conversões</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Comparativo por Plataforma -->
+        <div class="client-detail-grid-two-columns portal-two-col" style="gap: 12px; margin-top: 16px;" id="portal-ads-platforms-grid"></div>
+
+        <!-- Tabela de Campanhas -->
+        <div class="table-card" style="margin-top: 16px;">
+          <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+            <h2 class="section-heading" id="portal-campaigns-title">Campanhas</h2>
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              <input type="text" id="portal-search-campaign" class="filter-select" placeholder="Buscar campanha..." oninput="filterPortalCampaigns()" style="width: 150px; height: 32px; padding: 6px 12px; font-size: 11px;">
+              <select id="portal-filter-camp-platform" class="filter-select" onchange="filterPortalCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">
+                <option value="Todas">Plataforma (Todas)</option>
+              </select>
+              <select id="portal-filter-camp-status" class="filter-select" onchange="filterPortalCampaigns()" style="height: 32px; font-size: 11px; padding: 0 24px 0 10px;">
+                <option value="Todos">Status (Todos)</option>
+                <option value="Ativo">Ativo</option>
+                <option value="Pausado">Pausado</option>
+              </select>
+            </div>
+          </header>
+          <div class="table-wrapper" style="max-height: 360px; overflow-y: auto;">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Campanha</th>
+                  <th>Plataforma</th>
+                  <th>Investimento</th>
+                  <th>Impressões</th>
+                  <th>Cliques</th>
+                  <th>CTR</th>
+                  <th>CPC</th>
+                  <th>Conv.</th>
+                  <th>CPA</th>
+                </tr>
+              </thead>
+              <tbody id="portal-table-campaigns"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Evolução comercial -->
+      <section class="table-card" id="portal-evolution-section" style="margin-bottom: 20px; display: none;">
+        <h2 class="section-heading">Evolução comercial</h2>
+        <div id="portal-evolution-list" class="portal-evolution-grid" style="margin-top: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;"></div>
       </section>
 
       <!-- Dados solicitados pela agência -->
