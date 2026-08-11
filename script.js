@@ -4996,6 +4996,14 @@ function closeCustomFieldsModal() {
   document.getElementById('custom-fields-modal').style.display = 'none';
 }
 
+// Abre o portal do cliente (Dashboard Filho standalone) numa nova aba, já
+// filtrado pelo cliente que está aberto no Dashboard Pai.
+function openClientPortal() {
+  if (!currentClient) return;
+  const slug = clientSlugFromName(currentClient) || slugify(currentClient);
+  window.open(`portal-cliente.html?client=${encodeURIComponent(slug)}`, '_blank', 'noopener');
+}
+
 async function loadCustomFieldsForClient(clientName) {
   const slug = clientSlugFromName(clientName) || slugify(clientName);
   const list = document.getElementById('custom-fields-list');
