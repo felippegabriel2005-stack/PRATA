@@ -19,10 +19,14 @@
       overflow-x: hidden;
       overflow-y: auto;
     }
+    /* Sem sidebar aqui (diferente do app da agência), então o conteúdo pode
+       ocupar a largura toda — mesmo espírito do .main-panel principal, que
+       também não tem max-width e só usa padding. Um teto bem alto (1600px)
+       só evita linhas de texto absurdamente compridas em monitor ultrawide. */
     .portal-wrapper {
-      max-width: 960px;
+      max-width: 1600px;
       margin: 0 auto;
-      padding: 32px 20px 60px;
+      padding: 32px 40px 60px;
     }
     .portal-header {
       display: flex;
@@ -59,38 +63,17 @@
     .portal-field-item.filled { cursor: default; }
     .portal-field-item.filled:hover { border-color: var(--border-color); }
 
-    /* .metrics-row-six vem do app principal pensado pra tela cheia (6
-       colunas conforme a LARGURA DA JANELA, não do container) — aqui o
-       conteúdo fica numa coluna estreita de 720px, então força menos
-       colunas sempre, senão os valores (ex: "R$155k") ficam cortados. */
-    .portal-wrapper .metrics-row-six {
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
-    }
-    @media (max-width: 480px) {
-      .portal-wrapper .metrics-row-six {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-
-    /* Mesmo motivo: força colunas fixas independente da largura da janela */
-    .portal-wrapper .portal-metrics-row-five {
-      grid-template-columns: repeat(3, 1fr);
-    }
-    .portal-wrapper .portal-two-col {
-      grid-template-columns: 1fr 1fr;
-    }
+    /* .metrics-row-six/.metrics-row-five/.client-detail-grid-two-columns já
+       têm media queries próprias por LARGURA DA JANELA (style.css). Antes,
+       com o portal limitado a 720px, a janela ficava larga mas o container
+       estreito, e essas regras não batiam (cards cortados) — por isso
+       antes eu forçava colunas fixas aqui. Agora que o portal usa a
+       largura toda igual o app principal, essas media queries voltam a
+       fazer sentido sozinhas — só falta um ajuste fino em telas bem
+       estreitas (celular), onde o wrapper tem padding e a coluna dupla
+       ainda fica apertada. */
     @media (max-width: 640px) {
-      .portal-wrapper .portal-metrics-row-five,
-      .portal-wrapper .portal-evolution-grid {
-        grid-template-columns: repeat(2, 1fr) !important;
-      }
       .portal-wrapper .portal-two-col {
-        grid-template-columns: 1fr !important;
-      }
-    }
-    @media (max-width: 420px) {
-      .portal-wrapper .portal-metrics-row-five {
         grid-template-columns: 1fr !important;
       }
     }
