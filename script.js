@@ -4670,8 +4670,11 @@ function renderAdsChart(chartData) {
 
     svgContent += `<rect x="${x - barW / 2}" y="${y}" width="${barW}" height="${barH}" rx="2" class="chart-bar-invest" data-date="${chartData.dates[i]}" data-value="${val}" data-type="invest"></rect>`;
 
-    // Rótulos do eixo X (Datas)
-    if (n <= 7 || i % 2 === 0 || i === n - 1) {
+    // Rótulos do eixo X (Datas) — sempre mostra o primeiro e o último ponto,
+    // e a cada 2 no meio; quando n é par isso fazia o penúltimo rótulo
+    // (i === n-2) cair colado no último (i === n-1), sobrepondo o texto —
+    // por isso o `i < n - 2` no meio, pra nunca mostrar dois rótulos adjacentes.
+    if (n <= 7 || i === 0 || i === n - 1 || (i % 2 === 0 && i < n - 2)) {
       svgContent += `<text x="${x}" y="${h - paddingBottom + 16}" text-anchor="middle" class="chart-axis-text">${chartData.dates[i]}</text>`;
     }
   }
