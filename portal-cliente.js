@@ -144,6 +144,11 @@ async function initPortal() {
 
   document.getElementById('portal-loading').style.display = 'none';
   document.getElementById('portal-content').style.display = 'block';
+
+  // O gráfico foi desenhado com #portal-content ainda display:none (medindo
+  // clientWidth = 0, caindo no fallback de 800px fixo) — agora que o
+  // container está visível de verdade, redesenha do tamanho certo.
+  if (portalChartData) renderPortalAdsChart(portalChartData);
 }
 
 function showPortalError() {
