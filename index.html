@@ -1920,7 +1920,7 @@
 
         <div class="form-group">
           <label class="form-label" for="cf-metric-mapping">Usar este campo em alguma métrica?</label>
-          <select id="cf-metric-mapping" class="form-select">
+          <select id="cf-metric-mapping" class="form-select" onchange="handleCustomFieldMappingChange()">
             <option value="none">Não usar em métrica</option>
             <option value="sales">Vendas</option>
             <option value="revenue">Receita</option>
@@ -1932,6 +1932,7 @@
             <option value="custom_metric">Métrica personalizada</option>
           </select>
           <span style="font-size: 10px; color: var(--text-secondary); display: block; margin-top: 4px;">Quando mapeado, o valor preenchido pelo cliente vira a fonte oficial dessa métrica no Dashboard (em vez de dado de mídia), com a origem sempre identificada como "Informado pelo cliente".</span>
+          <div id="cf-history-match-banner" style="display:none; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--color-green); border-radius: var(--border-radius-sm); background: rgba(16, 185, 129, 0.08); font-size: 11px; color: var(--text-primary);"></div>
         </div>
 
         <div class="modal-footer">

@@ -351,6 +351,74 @@ function resolveCommercialMetricsPortal(customFields, customFieldValues) {
   return { resolved, customMetrics };
 }
 
+// Unificação Vendas/Receita (histórico importado em leads_sales + portal),
+// mesma lógica de script.js — duplicada aqui de propósito. Ver comentário
+// completo na versão do Dashboard Filho.
+function buildImportedDailyCountsPortal(leadsRows) {
+  const sales = {};
+  const revenue = {};
+  (leadsRows || []).forEach(l => {
+    const date = l.date;
+    if (!date) return;
+    const saleVal = Number(l.sale_value) || 0;
+    if (saleVal > 0) sales[date] = (sales[date] || 0) + 1;
+    const rev = Number(l.revenue) || saleVal;
+    if (rev > 0) revenue[date] = (revenue[date] || 0) + rev;
+  });
+  return { sales, revenue };
+}
+
+function buildPortalDailyValuesPortal(customFields, customFieldValues, mappingType) {
+  const fieldIds = new Set((customFields || []).filter(f => f.active && f.metric_mapping === mappingType).map(f => f.id));
+  const byDate = {};
+  (customFieldValues || []).forEach(v => {
+    if (!fieldIds.has(v.field_id)) return;
+    byDate[v.period_date] = (byDate[v.period_date] || 0) + (Number(v.value_number) || 0);
+  });
+  return byDate;
+}
+
+function unifyDailySeriesPortal(importByDate, portalByDate) {
+  const dates = new Set([...Object.keys(importByDate || {}), ...Object.keys(portalByDate || {})]);
+  const records = [];
+  dates.forEach(date => {
+    if (portalByDate[date] !== undefined) records.push({ date, value: portalByDate[date], source: 'portal' });
+    else records.push({ date, value: importByDate[date], source: 'import' });
+  });
+  records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const total = records.reduce((s, r) => s + r.value, 0);
+  const bySource = { import: 0, portal: 0 };
+  records.forEach(r => { bySource[r.source] += r.value; });
+  return { total, bySource, records };
+}
+
+// Igual à versão de script.js: só entra o histórico importado (leads_sales)
+// quando já existe campo ativo mapeado pra esse tipo — sem isso, nada muda
+// pra clientes que nunca usaram campo personalizado.
+function resolveUnifiedSalesAndRevenuePortal(leadsRows, customFields, customFieldValues) {
+  const emptySeries = { total: 0, bySource: { import: 0, portal: 0 }, records: [] };
+  const hasSalesField = (customFields || []).some(f => f.active && f.metric_mapping === 'sales');
+  const hasRevenueField = (customFields || []).some(f => f.active && f.metric_mapping === 'revenue');
+  if (!hasSalesField && !hasRevenueField) return { sales: emptySeries, revenue: emptySeries };
+
+  const importedDaily = buildImportedDailyCountsPortal(leadsRows);
+  const portalSalesDaily = buildPortalDailyValuesPortal(customFields, customFieldValues, 'sales');
+  const portalRevenueDaily = buildPortalDailyValuesPortal(customFields, customFieldValues, 'revenue');
+  return {
+    sales: hasSalesField ? unifyDailySeriesPortal(importedDaily.sales, portalSalesDaily) : emptySeries,
+    revenue: hasRevenueField ? unifyDailySeriesPortal(importedDaily.revenue, portalRevenueDaily) : emptySeries
+  };
+}
+
+function describeSourceLabelPortal(bySource) {
+  const hasImport = bySource.import > 0;
+  const hasPortal = bySource.portal > 0;
+  if (hasImport && hasPortal) return { key: 'mixed', text: 'Fonte: importação + portal do cliente' };
+  if (hasPortal) return { key: 'portal', text: 'Fonte: informado pelo cliente' };
+  if (hasImport) return { key: 'import', text: 'Fonte: importação (histórico)' };
+  return { key: 'none', text: '' };
+}
+
 // Preenche a seção "Métricas comerciais" do portal — mesmo comportamento da
 // versão do Dashboard Filho (script.js): só aparece quando há pelo menos um
 // campo mapeado com valor, e cada card deixa a origem explícita.
@@ -367,9 +435,23 @@ function renderPortalCommercialMetrics(data) {
   const hasCustom = customMetrics.length > 0;
 
   const receitaBadge = document.getElementById('portal-receita-source-badge');
-  if (receitaBadge) receitaBadge.style.display = data.revenueSource === 'manual' ? 'block' : 'none';
+  if (receitaBadge) {
+    if (data.revenueSourceLabel && data.revenueSourceLabel.key !== 'none') {
+      receitaBadge.innerText = data.revenueSourceLabel.text;
+      receitaBadge.style.display = 'block';
+    } else {
+      receitaBadge.style.display = 'none';
+    }
+  }
   const vendasBadge = document.getElementById('portal-vendas-source-badge');
-  if (vendasBadge) vendasBadge.style.display = (data.salesResolved !== null && data.salesResolved !== undefined) ? 'block' : 'none';
+  if (vendasBadge) {
+    if (data.salesSourceLabel && data.salesSourceLabel.key !== 'none') {
+      vendasBadge.innerText = data.salesSourceLabel.text;
+      vendasBadge.style.display = 'block';
+    } else {
+      vendasBadge.style.display = 'none';
+    }
+  }
 
   if (!hasCommercial && !hasCustom) {
     section.style.display = 'none';
@@ -390,7 +472,10 @@ function renderPortalCommercialMetrics(data) {
     if (!commercial[type]) return;
     const label = COMMERCIAL_METRIC_LABELS_PORTAL[type];
     const value = type === 'revenue' ? formatCurrencyPortal(commercial[type].value) : formatNumberPortal(commercial[type].value);
-    html += cardHtml(label, value);
+    const sourceLabel = (type === 'sales' || type === 'revenue') && commercial[type].bySource
+      ? describeSourceLabelPortal(commercial[type].bySource).text
+      : null;
+    html += cardHtml(label, value, sourceLabel);
   });
 
   if (stats.custoPorVenda !== null && stats.custoPorVenda !== undefined) {
@@ -445,6 +530,19 @@ function buildPortalClientData(campaigns, leadsRows, customFields, customFieldVa
   // atendimentos/cancelamentos/qualificados normalmente não vêm de mídia
   // paga, então dado manual mapeado tem prioridade quando existir.
   const { resolved: commercial, customMetrics } = resolveCommercialMetricsPortal(customFields, customFieldValues);
+
+  // Vendas/Receita: unifica histórico importado (leads_sales) com o que o
+  // próprio cliente preencheu no portal, dia a dia, sem duplicar.
+  const unified = resolveUnifiedSalesAndRevenuePortal(leadsRows, customFields, customFieldValues);
+  if (unified.sales.records.length) {
+    commercial.sales = { value: unified.sales.total, fieldNames: commercial.sales ? commercial.sales.fieldNames : [], bySource: unified.sales.bySource, records: unified.sales.records };
+  }
+  if (unified.revenue.records.length) {
+    commercial.revenue = { value: unified.revenue.total, fieldNames: commercial.revenue ? commercial.revenue.fieldNames : [], bySource: unified.revenue.bySource, records: unified.revenue.records };
+  }
+
+  const revenueSourceLabel = commercial.revenue ? describeSourceLabelPortal(commercial.revenue.bySource || { import: 0, portal: commercial.revenue.value }) : null;
+  const salesSourceLabel = commercial.sales ? describeSourceLabelPortal(commercial.sales.bySource || { import: 0, portal: commercial.sales.value }) : null;
   const revenueSource = commercial.revenue ? 'manual' : 'media';
   if (commercial.revenue) totalRevenue = commercial.revenue.value;
   const salesResolved = commercial.sales ? commercial.sales.value : null;
@@ -549,7 +647,7 @@ function buildPortalClientData(campaigns, leadsRows, customFields, customFieldVa
     },
     conversaoPct, cpl, cpa, roi,
     finalFunnelValue, finalFunnelPct,
-    commercial, customMetrics, revenueSource, salesResolved,
+    commercial, customMetrics, revenueSource, revenueSourceLabel, salesSourceLabel, salesResolved,
     commercialStats: { custoPorVenda, taxaLeadVenda, taxaCliqueVenda, ticketMedio, roas },
     leadsSource, lossReasons, evolution,
     chartData: { dates: chartDates, investimento: dateKeys.map(d => byDate[d].invest), conversoes: dateKeys.map(d => byDate[d].convs) },

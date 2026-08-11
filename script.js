@@ -194,6 +194,117 @@ function resolveCommercialMetrics(customFields, customFieldValues) {
   return { resolved, customMetrics };
 }
 
+// --------------------------------------------------
+// Unificação Vendas/Receita: histórico importado (leads_sales) + portal
+// --------------------------------------------------
+// leads_sales é a planilha de leads/negócios importada pela agência (antes
+// de existir campo personalizado): cada linha é um negócio, com `date`,
+// `sale_value` (preenchido quando o negócio virou venda) e `revenue`. Uma
+// linha com sale_value > 0 é uma venda real histórica — mesma lógica que já
+// decide os "Motivos de perda" a partir dessa tabela.
+//
+// custom_field_values é o preenchimento novo, feito pelo cliente no portal
+// a partir do dia em que o campo foi criado.
+//
+// As duas fontes alimentam a MESMA métrica (Vendas/Receita), nunca duas
+// métricas separadas: pra cada dia, se o portal tem valor, ele é usado (é
+// mais recente/direto); se não tem, usa o importado. NUNCA soma as duas no
+// mesmo dia (duplicaria). Dias diferentes somam normalmente.
+
+// Conta vendas (linhas com sale_value > 0) e soma receita (revenue, ou
+// sale_value se revenue não foi preenchido) por dia, a partir do histórico
+// importado de leads_sales.
+function buildImportedDailyCounts(leadsRows) {
+  const sales = {};
+  const revenue = {};
+  (leadsRows || []).forEach(l => {
+    const date = l.date;
+    if (!date) return;
+    const saleVal = Number(l.sale_value) || 0;
+    if (saleVal > 0) {
+      sales[date] = (sales[date] || 0) + 1;
+    }
+    const rev = Number(l.revenue) || saleVal;
+    if (rev > 0) {
+      revenue[date] = (revenue[date] || 0) + rev;
+    }
+  });
+  return { sales, revenue };
+}
+
+// Soma os valores preenchidos no portal (custom_field_values), por dia,
+// pra campos ativos mapeados num tipo de métrica específico (ex: 'sales').
+function buildPortalDailyValues(customFields, customFieldValues, mappingType) {
+  const fieldIds = new Set((customFields || []).filter(f => f.active && f.metric_mapping === mappingType).map(f => f.id));
+  const byDate = {};
+  (customFieldValues || []).forEach(v => {
+    if (!fieldIds.has(v.field_id)) return;
+    const val = Number(v.value_number) || 0;
+    byDate[v.period_date] = (byDate[v.period_date] || 0) + val;
+  });
+  return byDate;
+}
+
+// Combina as duas séries diárias numa só: por dia, portal > importado
+// (nunca os dois somados no mesmo dia). Retorna o total, a quebra por
+// origem (pra badges tipo "Fonte: importação + portal") e os registros
+// individuais (pra exportação/auditoria e pro histórico que a IA usa).
+function unifyDailySeries(importByDate, portalByDate) {
+  const dates = new Set([...Object.keys(importByDate || {}), ...Object.keys(portalByDate || {})]);
+  const records = [];
+  dates.forEach(date => {
+    if (portalByDate[date] !== undefined) {
+      records.push({ date, value: portalByDate[date], source: 'portal' });
+    } else {
+      records.push({ date, value: importByDate[date], source: 'import' });
+    }
+  });
+  records.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const total = records.reduce((s, r) => s + r.value, 0);
+  const bySource = { import: 0, portal: 0 };
+  records.forEach(r => { bySource[r.source] += r.value; });
+  return { total, bySource, records };
+}
+
+// Função central: Vendas e Receita unificadas de um cliente (histórico
+// importado + portal), prontas pra alimentar Dashboard Filho, Dashboard Pai
+// e o contexto da IA — sempre respeitando o recorte de linhas já filtrado
+// pelo período (quem chama já filtra leadsRows/customFieldValues por data).
+//
+// IMPORTANTE: o histórico importado (leads_sales) só entra na unificação
+// quando a agência já criou um campo ATIVO mapeado pra esse tipo (sales ou
+// revenue) — ou seja, só depois que o cliente "conecta" a métrica. Sem
+// campo mapeado, nada muda: Vendas continua caindo no proxy de conversões
+// de mídia e Receita continua vindo de campaign_metrics, exatamente como
+// antes. Isso evita que clientes que nunca usaram campo personalizado
+// tenham a Receita/Vendas trocada de uma hora pra outra por causa de leads
+// antigos importados pra outro propósito (ex: só motivos de perda).
+function resolveUnifiedSalesAndRevenue(leadsRows, customFields, customFieldValues) {
+  const emptySeries = { total: 0, bySource: { import: 0, portal: 0 }, records: [] };
+  const hasSalesField = (customFields || []).some(f => f.active && f.metric_mapping === 'sales');
+  const hasRevenueField = (customFields || []).some(f => f.active && f.metric_mapping === 'revenue');
+  if (!hasSalesField && !hasRevenueField) return { sales: emptySeries, revenue: emptySeries };
+
+  const importedDaily = buildImportedDailyCounts(leadsRows);
+  const portalSalesDaily = buildPortalDailyValues(customFields, customFieldValues, 'sales');
+  const portalRevenueDaily = buildPortalDailyValues(customFields, customFieldValues, 'revenue');
+  return {
+    sales: hasSalesField ? unifyDailySeries(importedDaily.sales, portalSalesDaily) : emptySeries,
+    revenue: hasRevenueField ? unifyDailySeries(importedDaily.revenue, portalRevenueDaily) : emptySeries
+  };
+}
+
+// Rótulo curto de origem pra badges — usado sempre que uma métrica pode vir
+// de mais de uma fonte (nunca esconde de onde veio o dado).
+function describeSourceLabel(bySource) {
+  const hasImport = bySource.import > 0;
+  const hasPortal = bySource.portal > 0;
+  if (hasImport && hasPortal) return { key: 'mixed', text: 'Fonte: importação + portal do cliente' };
+  if (hasPortal) return { key: 'portal', text: 'Fonte: informado pelo cliente' };
+  if (hasImport) return { key: 'import', text: 'Fonte: importação (histórico)' };
+  return { key: 'none', text: '' };
+}
+
 // Preenche a seção "Métricas comerciais" do Dashboard Filho — só aparece
 // quando existe pelo menos um campo personalizado mapeado com valor. Cada
 // card deixa a origem explícita ("Fonte: Informado pelo cliente") pra nunca
@@ -212,9 +323,23 @@ function renderCommercialMetrics(data) {
   const hasCustom = customMetrics.length > 0;
 
   const receitaBadge = document.getElementById('c-receita-source-badge');
-  if (receitaBadge) receitaBadge.style.display = data.revenueSource === 'manual' ? 'block' : 'none';
+  if (receitaBadge) {
+    if (data.revenueSourceLabel && data.revenueSourceLabel.key !== 'none') {
+      receitaBadge.innerText = data.revenueSourceLabel.text;
+      receitaBadge.style.display = 'block';
+    } else {
+      receitaBadge.style.display = 'none';
+    }
+  }
   const vendasBadge = document.getElementById('c-vendas-source-badge');
-  if (vendasBadge) vendasBadge.style.display = data.salesResolved !== null && data.salesResolved !== undefined ? 'block' : 'none';
+  if (vendasBadge) {
+    if (data.salesSourceLabel && data.salesSourceLabel.key !== 'none') {
+      vendasBadge.innerText = data.salesSourceLabel.text;
+      vendasBadge.style.display = 'block';
+    } else {
+      vendasBadge.style.display = 'none';
+    }
+  }
 
   if (!hasCommercial && !hasCustom) {
     separator.style.display = 'none';
@@ -237,7 +362,10 @@ function renderCommercialMetrics(data) {
     if (!commercial[type]) return;
     const label = COMMERCIAL_METRIC_LABELS[type];
     const value = type === 'revenue' ? formatCurrency(commercial[type].value) : formatNumber(commercial[type].value);
-    html += cardHtml(label, value);
+    const sourceLabel = (type === 'sales' || type === 'revenue') && commercial[type].bySource
+      ? describeSourceLabel(commercial[type].bySource).text
+      : null;
+    html += cardHtml(label, value, sourceLabel);
   });
 
   if (stats.custoPorVenda !== null && stats.custoPorVenda !== undefined) {
@@ -289,9 +417,23 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, cust
   // atendimentos/cancelamentos/qualificados normalmente não vêm de mídia
   // paga, então dado manual mapeado tem prioridade quando existir.
   const { resolved: commercial, customMetrics } = resolveCommercialMetrics(customFields, customFieldValues);
-  const revenueSource = commercial.revenue ? 'manual' : 'media';
+
+  // Vendas e Receita são as duas métricas com fonte histórica confiável
+  // (leads_sales, da planilha importada) — unifica isso com o que o portal
+  // preencher depois, dia a dia, sem duplicar (ver resolveUnifiedSalesAndRevenue).
+  const unified = resolveUnifiedSalesAndRevenue(leadsRows, customFields, customFieldValues);
+  if (unified.sales.records.length) {
+    commercial.sales = { value: unified.sales.total, fieldNames: commercial.sales ? commercial.sales.fieldNames : [], bySource: unified.sales.bySource, records: unified.sales.records };
+  }
+  if (unified.revenue.records.length) {
+    commercial.revenue = { value: unified.revenue.total, fieldNames: commercial.revenue ? commercial.revenue.fieldNames : [], bySource: unified.revenue.bySource, records: unified.revenue.records };
+  }
+
+  const revenueSource = commercial.revenue ? describeSourceLabel(commercial.revenue.bySource || { import: 0, portal: commercial.revenue.value }).key : 'media';
   if (commercial.revenue) totalRevenue = commercial.revenue.value;
   const salesResolved = commercial.sales ? commercial.sales.value : null;
+  const salesSourceLabel = commercial.sales ? describeSourceLabel(commercial.sales.bySource || { import: 0, portal: commercial.sales.value }) : null;
+  const revenueSourceLabel = commercial.revenue ? describeSourceLabel(commercial.revenue.bySource || { import: 0, portal: commercial.revenue.value }) : null;
 
   const conversaoPct = totalClicks > 0 ? (totalConvs / totalClicks) * 100 : 0;
   const cpl = totalLeads > 0 ? totalInvest / totalLeads : 0;
@@ -448,6 +590,8 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, cust
     commercial,
     customMetrics,
     revenueSource,
+    revenueSourceLabel,
+    salesSourceLabel,
     salesResolved,
     commercialStats: {
       custoPorVenda,
@@ -740,11 +884,12 @@ function updateClientStatusesFromCampaigns(campaigns, targets) {
 // status (healthy/attention/critical) de cada cliente a partir dos dados
 // reais, em vez de depender só do valor gravado na importação/cadastro.
 async function refreshAgencyPeriodDataFromReal() {
-  const [{ data }, { data: targets }, { data: allCustomFields }, { data: allCustomFieldValues }] = await Promise.all([
+  const [{ data }, { data: targets }, { data: allCustomFields }, { data: allCustomFieldValues }, { data: allLeadsRows }] = await Promise.all([
     supabaseClient.from('campaign_metrics').select('*'),
     supabaseClient.from('targets').select('*'),
     supabaseClient.from('custom_fields').select('*').eq('active', true),
-    supabaseClient.from('custom_field_values').select('*')
+    supabaseClient.from('custom_field_values').select('*'),
+    supabaseClient.from('leads_sales').select('*')
   ]);
   const campaigns = data || [];
 
@@ -765,9 +910,10 @@ async function refreshAgencyPeriodDataFromReal() {
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const quarterStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
 
-  function aggregate(rows, cfValues) {
+  function aggregate(rows, cfValues, leadsRowsForPeriod) {
     let invest = 0, impress = 0, clicks = 0, pageViews = 0, leads = 0, convs = 0, revenue = 0, sales = 0;
-    let hasManualRevenue = false, hasManualSales = false;
+    const revenueBySource = { import: 0, portal: 0 };
+    const salesBySource = { import: 0, portal: 0 };
 
     const byClient = {};
     rows.forEach(c => {
@@ -789,19 +935,28 @@ async function refreshAgencyPeriodDataFromReal() {
       convs += Number(c.conversions) || 0;
     });
 
-    // União dos clientes com campanha e dos clientes que só têm campo
-    // personalizado mapeado (sem mídia ainda) — ambos entram na soma.
-    const clientSlugs = new Set([...Object.keys(byClient), ...Object.keys(customFieldsBySlug)]);
+    // União dos clientes com campanha, com campo personalizado mapeado ou
+    // com histórico de leads_sales (podem não coincidir) — todos entram na
+    // soma da carteira.
+    const leadsBySlugForPeriod = {};
+    (leadsRowsForPeriod || []).forEach(l => {
+      if (!leadsBySlugForPeriod[l.client_slug]) leadsBySlugForPeriod[l.client_slug] = [];
+      leadsBySlugForPeriod[l.client_slug].push(l);
+    });
+    const clientSlugs = new Set([...Object.keys(byClient), ...Object.keys(customFieldsBySlug), ...Object.keys(leadsBySlugForPeriod)]);
     clientSlugs.forEach(slug => {
       const clientTotals = byClient[slug] || { invest: 0, impress: 0, clicks: 0, pageViews: 0, leads: 0, convs: 0, revenue: 0 };
       const clientFields = customFieldsBySlug[slug] || [];
       const clientValues = (cfValues || []).filter(v => v.client_slug === slug);
-      const { resolved } = resolveCommercialMetrics(clientFields, clientValues);
+      const clientLeads = leadsBySlugForPeriod[slug] || [];
+      const unified = resolveUnifiedSalesAndRevenue(clientLeads, clientFields, clientValues);
 
-      revenue += resolved.revenue ? resolved.revenue.value : clientTotals.revenue;
-      sales += resolved.sales ? resolved.sales.value : clientTotals.convs;
-      if (resolved.revenue) hasManualRevenue = true;
-      if (resolved.sales) hasManualSales = true;
+      revenue += unified.revenue.records.length ? unified.revenue.total : clientTotals.revenue;
+      sales += unified.sales.records.length ? unified.sales.total : clientTotals.convs;
+      revenueBySource.import += unified.revenue.bySource.import;
+      revenueBySource.portal += unified.revenue.bySource.portal;
+      salesBySource.import += unified.sales.bySource.import;
+      salesBySource.portal += unified.sales.bySource.portal;
     });
 
     const conv = clicks > 0 ? (convs / clicks) * 100 : 0;
@@ -810,14 +965,18 @@ async function refreshAgencyPeriodDataFromReal() {
     const roi = invest > 0 ? ((revenue - invest) / invest) * 100 : 0;
     const finalPct = clicks > 0 ? (sales / clicks) * 100 : 0;
     const trendLabel = rows.length > 0 ? '■ Dados importados' : '— Sem dados importados';
+    const revenueSourceLabel = describeSourceLabel(revenueBySource);
+    const salesSourceLabel = describeSourceLabel(salesBySource);
     return {
       investimento: formatCurrency(invest),
       trendInvestimento: trendLabel,
       receita: formatCurrency(revenue),
       trendReceita: trendLabel,
       vendas: formatNumber(sales),
-      hasManualRevenue,
-      hasManualSales,
+      revenueSourceLabel,
+      salesSourceLabel,
+      hasManualRevenue: revenueBySource.portal > 0,
+      hasManualSales: salesBySource.portal > 0,
       conversao: `${conv.toFixed(1)}%`,
       cpl: leads > 0 ? formatCurrency(cpl) : '—',
       trendCpl: leads > 0 ? '■ Estável' : '— Sem leads',
@@ -835,10 +994,11 @@ async function refreshAgencyPeriodDataFromReal() {
   }
 
   const valuesInRange = (start) => (allCustomFieldValues || []).filter(v => !start || new Date(v.period_date) >= start);
+  const leadsInRange = (start) => (allLeadsRows || []).filter(l => !start || new Date(l.date) >= start);
 
-  agencyPeriodData['All Time'] = aggregate(campaigns, allCustomFieldValues || []);
-  agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart), valuesInRange(monthStart));
-  agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart), valuesInRange(quarterStart));
+  agencyPeriodData['All Time'] = aggregate(campaigns, allCustomFieldValues || [], allLeadsRows || []);
+  agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart), valuesInRange(monthStart), leadsInRange(monthStart));
+  agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart), valuesInRange(quarterStart), leadsInRange(quarterStart));
 
   usingRealAgencyData = campaigns.length > 0;
 }
@@ -2729,9 +2889,10 @@ async function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
     const startISO = formatDateISO(startDate);
     const endISO = formatDateISO(endDate);
 
-    const [{ data: campaigns }, { data: cfValues }] = await Promise.all([
+    const [{ data: campaigns }, { data: cfValues }, { data: leadsRows }] = await Promise.all([
       supabaseClient.from('campaign_metrics').select('*').eq('client_slug', slug).gte('date', startISO).lte('date', endISO),
-      supabaseClient.from('custom_field_values').select('*').eq('client_slug', slug).gte('period_date', startISO).lte('period_date', endISO)
+      supabaseClient.from('custom_field_values').select('*').eq('client_slug', slug).gte('period_date', startISO).lte('period_date', endISO),
+      supabaseClient.from('leads_sales').select('*').eq('client_slug', slug).gte('date', startISO).lte('date', endISO)
     ]);
 
     // Só recalcula se ainda estivermos olhando pro mesmo cliente quando a
@@ -2741,7 +2902,7 @@ async function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
 
     const built = buildClientDetailedDataFromReal(
       campaigns || [],
-      clientData.leadsRowsAll || [],
+      leadsRows || [],
       clientData.targetsRowsAll || [],
       clientData.customFieldsDefs || [],
       cfValues || []
@@ -4625,9 +4786,23 @@ function updateDashboardPaiValues(data) {
   document.getElementById('val-cpa').innerText = data.cpa;
 
   const receitaBadge = document.getElementById('val-receita-source-badge');
-  if (receitaBadge) receitaBadge.style.display = data.hasManualRevenue ? 'block' : 'none';
+  if (receitaBadge) {
+    if (data.revenueSourceLabel && data.revenueSourceLabel.key !== 'none' && data.revenueSourceLabel.key !== 'media') {
+      receitaBadge.innerText = `Carteira — ${data.revenueSourceLabel.text.replace('Fonte: ', '')}`;
+      receitaBadge.style.display = 'block';
+    } else {
+      receitaBadge.style.display = 'none';
+    }
+  }
   const vendasBadge = document.getElementById('funnel-vendas-source-badge');
-  if (vendasBadge) vendasBadge.style.display = data.hasManualSales ? 'block' : 'none';
+  if (vendasBadge) {
+    if (data.salesSourceLabel && data.salesSourceLabel.key !== 'none' && data.salesSourceLabel.key !== 'media') {
+      vendasBadge.innerText = `Carteira — ${data.salesSourceLabel.text.replace('Fonte: ', '')}`;
+      vendasBadge.style.display = 'block';
+    } else {
+      vendasBadge.style.display = 'none';
+    }
+  }
 
   document.getElementById('trend-investimento').innerText = data.trendInvestimento;
   document.getElementById('trend-receita').innerText = data.trendReceita;
@@ -5461,6 +5636,7 @@ function openCustomFieldForm(fieldId) {
 
   handleCustomFieldTypeChange();
   handleCustomFieldFrequencyChange();
+  handleCustomFieldMappingChange();
   renderCustomFieldOptionsList();
   document.getElementById('custom-field-form-modal').style.display = 'flex';
 }
@@ -5487,6 +5663,43 @@ function handleCustomFieldFrequencyChange() {
   const freq = document.getElementById('cf-frequency').value;
   const hint = document.getElementById('cf-frequency-hint');
   if (hint) hint.innerText = CUSTOM_FIELD_FREQUENCY_HINTS[freq] || '';
+}
+
+// Quando a agência mapeia o campo pra Vendas ou Receita, avisa se esse
+// cliente já tem histórico importado (leads_sales) pra essa métrica — o
+// campo vai unificar automaticamente com esse histórico (dias já
+// importados continuam vindo da planilha, dias novos vêm do portal), então
+// isso é só um aviso informativo, não uma decisão de conectar ou não.
+async function handleCustomFieldMappingChange() {
+  const mapping = document.getElementById('cf-metric-mapping').value;
+  const banner = document.getElementById('cf-history-match-banner');
+  if (!banner) return;
+
+  if ((mapping !== 'sales' && mapping !== 'revenue') || !currentClient) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const slug = clientSlugFromName(currentClient) || slugify(currentClient);
+  const { data: leadsRows } = await supabaseClient.from('leads_sales').select('date, sale_value, revenue').eq('client_slug', slug);
+
+  // Se o usuário já trocou o mapeamento de novo (ou fechou o form) enquanto
+  // a consulta estava em andamento, não mostra um aviso desatualizado.
+  if (document.getElementById('cf-metric-mapping').value !== mapping) return;
+
+  const rows = (leadsRows || []).filter(l => mapping === 'sales' ? (Number(l.sale_value) || 0) > 0 : (Number(l.revenue) || Number(l.sale_value) || 0) > 0);
+  if (!rows.length) {
+    banner.style.display = 'none';
+    return;
+  }
+
+  const dates = rows.map(l => l.date).filter(Boolean).sort();
+  const label = mapping === 'sales' ? 'Vendas' : 'Receita';
+  const countText = mapping === 'sales'
+    ? `${rows.length} venda(s)`
+    : formatCurrency(rows.reduce((s, l) => s + (Number(l.revenue) || Number(l.sale_value) || 0), 0));
+  banner.innerText = `📊 Encontramos histórico de ${label} importado pra ${currentClient}: ${countText} desde ${formatDate(new Date(dates[0] + 'T00:00:00'))}. Esse campo vai complementar esse histórico automaticamente — dias já importados continuam vindo da planilha, e os novos preenchimentos do portal passam a valer a partir de quando forem feitos, sem duplicar.`;
+  banner.style.display = 'block';
 }
 
 function addCustomFieldOption() {
@@ -6140,12 +6353,24 @@ function buildAssistantContext() {
       lines.push(`Métricas personalizadas (definidas pela agência) de ${currentClient}: ${d.customMetrics.map(m => `${m.name}: ${Math.round(m.value).toLocaleString('pt-BR')}${m.unit ? ' ' + m.unit : ''}`).join(', ')}.`);
     }
 
+    // Histórico dia a dia de Vendas/Receita já vem UNIFICADO (histórico
+    // importado de leads_sales + preenchimentos do portal, sem duplicar) em
+    // d.commercial.sales/revenue.records — cada ponto marcado com a origem.
+    ['sales', 'revenue'].forEach(type => {
+      if (!d.commercial || !d.commercial[type] || !Array.isArray(d.commercial[type].records)) return;
+      const entries = d.commercial[type].records.slice(-60);
+      if (!entries.length) return;
+      const label = COMMERCIAL_METRIC_LABELS[type];
+      const points = entries.map(r => `${r.date}: ${r.value}${r.source === 'import' ? ' (importação)' : ' (portal)'}`).join('; ');
+      lines.push(`Histórico por dia de "${label}" de ${currentClient} (importação + portal, sem duplicar): ${points}.`);
+    });
+
     // Histórico dia a dia (ou por semana/quinzena/mês, conforme a
-    // frequência do campo) de cada métrica comercial mapeada — sem isso a
-    // IA só via o TOTAL do período aberto e não conseguia responder
-    // perguntas sobre um dia específico ("e no dia 10?").
+    // frequência do campo) das demais métricas comerciais mapeadas
+    // (propostas, agendamentos etc.) — essas só vêm do portal, sem
+    // histórico importado equivalente ainda.
     if (Array.isArray(d.customFieldsDefs) && d.customFieldsDefs.length && Array.isArray(d.customFieldValuesAll)) {
-      const mappedFields = d.customFieldsDefs.filter(f => f.metric_mapping && f.metric_mapping !== 'none');
+      const mappedFields = d.customFieldsDefs.filter(f => f.metric_mapping && f.metric_mapping !== 'none' && f.metric_mapping !== 'sales' && f.metric_mapping !== 'revenue');
       mappedFields.forEach(field => {
         const entries = d.customFieldValuesAll
           .filter(v => v.field_id === field.id)
@@ -6156,9 +6381,9 @@ function buildAssistantContext() {
         const points = entries.map(v => `${v.period_date}: ${v.value_number !== null && v.value_number !== undefined ? v.value_number : (v.value_text || '—')}`).join('; ');
         lines.push(`Histórico por período informado pelo cliente para "${label}" (campo "${field.name}", frequência ${CUSTOM_FIELD_FREQUENCY_LABELS[field.frequency] || field.frequency}): ${points}.`);
       });
-      if (mappedFields.length) {
-        lines.push(`Quando perguntarem sobre um dia/semana/mês específico de ${currentClient} (ex: "e no dia 10?", "e essa semana?"), procure a(s) data(s) correspondente(s) no histórico acima — não responda só com o total geral.`);
-      }
+    }
+    if ((d.commercial && (d.commercial.sales || d.commercial.revenue)) || (d.customFieldsDefs && d.customFieldsDefs.some(f => f.metric_mapping && f.metric_mapping !== 'none'))) {
+      lines.push(`Quando perguntarem sobre um dia/semana/mês específico de ${currentClient} (ex: "e no dia 10?", "e essa semana?"), procure a(s) data(s) correspondente(s) no histórico acima — não responda só com o total geral.`);
     }
 
     if (Array.isArray(d.insights) && d.insights.length) {
