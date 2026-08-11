@@ -516,6 +516,7 @@ async function refreshClientDetailedDataIfReal(clientName) {
   // custom_field_values.period_date), em vez de aproximar por "fator".
   built.slug = slug;
   built.customFieldsDefs = customFields || [];
+  built.customFieldValuesAll = customFieldValues || [];
   built.leadsRowsAll = leadsRows || [];
   built.targetsRowsAll = targetsRows || [];
   const allDates = [
@@ -538,14 +539,15 @@ async function refreshClientDetailedDataIfReal(clientName) {
   // Insights estratégicos por IA: usa cache do Supabase (client_ai_insights) e
   // só chama a OpenAI de novo quando os dados reais do cliente mudaram
   // (fingerprint diferente) — evita custo/latência a cada visita ao cliente.
-  maybeGenerateStrategicInsights(clientName, slug, campaigns || [], leadsRows || [], targetsRows || [], built);
+  maybeGenerateStrategicInsights(clientName, slug, campaigns || [], leadsRows || [], targetsRows || [], built, customFieldValues || []);
 }
 
 // Assinatura compacta e determinística dos dados reais de um cliente. Muda
 // sempre que uma reimportação altera valores/quantidade de linhas, e serve
 // pra decidir se o cache de insights estratégicos ainda é válido.
-function computeDataFingerprint(campaigns, leadsRows, targetsRows) {
+function computeDataFingerprint(campaigns, leadsRows, targetsRows, customFieldValues) {
   const sum = (arr, key) => arr.reduce((s, r) => s + (Number(r[key]) || 0), 0);
+  const cfValues = customFieldValues || [];
   return [
     campaigns.length,
     leadsRows.length,
@@ -557,7 +559,12 @@ function computeDataFingerprint(campaigns, leadsRows, targetsRows) {
     sum(campaigns, 'impressions').toFixed(2),
     sum(campaigns, 'clicks').toFixed(2),
     sum(campaigns, 'page_views').toFixed(2),
-    sum(leadsRows, 'sale_value').toFixed(2)
+    sum(leadsRows, 'sale_value').toFixed(2),
+    // Campos personalizados (vendas/receita informadas etc.) também entram
+    // no fingerprint — sem isso, um novo preenchimento no portal não
+    // invalidava o cache e os insights nunca refletiam o dado novo.
+    cfValues.length,
+    sum(cfValues, 'value_number').toFixed(2)
   ].join('|');
 }
 
@@ -568,7 +575,30 @@ function computeDataFingerprint(campaigns, leadsRows, targetsRows) {
 function buildStrategicInsightsContext(clientName, built, campaigns, leadsRows, targetsRows) {
   const lines = [];
   lines.push(`Cliente: ${clientName}.`);
-  lines.push(`Resumo geral (todo o período importado): Investimento ${formatCurrency(built.raw.invest)}, Receita ${formatCurrency(built.raw.revenue)}, ROI ${built.metrics.roi}, Leads ${built.raw.leads}, Conversões ${built.raw.conversions}, Taxa de conversão ${built.metrics.conversao}, CPL ${built.metrics.cpl}, CPA ${built.metrics.cpa}.`);
+  lines.push(`Resumo geral (todo o período importado): Investimento ${formatCurrency(built.raw.invest)}, Receita ${formatCurrency(built.raw.revenue)}, ROI ${built.metrics.roi}, Leads ${built.raw.leads}, Conversão de mídia (cliques → conversões rastreadas pelo anúncio, NÃO é venda confirmada) ${built.metrics.conversao}, CPL ${built.metrics.cpl}, CPA ${built.metrics.cpa}.`);
+
+  // Métricas comerciais informadas manualmente pelo cliente no portal
+  // (vendas, receita, propostas etc.) — quando existir campo mapeado, é o
+  // dado OFICIAL, e os insights devem priorizar/citar isso, não confundir
+  // com o proxy de "conversão de mídia" acima.
+  if (built.commercial && Object.keys(built.commercial).length) {
+    const commercialLines = Object.keys(COMMERCIAL_METRIC_LABELS)
+      .filter(t => built.commercial[t])
+      .map(t => {
+        const label = COMMERCIAL_METRIC_LABELS[t];
+        const val = t === 'revenue' ? formatCurrency(built.commercial[t].value) : Math.round(built.commercial[t].value).toLocaleString('pt-BR');
+        return `${label}: ${val}`;
+      });
+    lines.push(`Dado comercial OFICIAL informado pelo cliente (fonte manual, prioritário sobre métricas de mídia): ${commercialLines.join('; ')}.`);
+  }
+  if (built.commercialStats) {
+    const s = built.commercialStats;
+    const statParts = [];
+    if (s.custoPorVenda !== null && s.custoPorVenda !== undefined) statParts.push(`Custo por venda: ${formatCurrency(s.custoPorVenda)}`);
+    if (s.ticketMedio !== null && s.ticketMedio !== undefined) statParts.push(`Ticket médio: ${formatCurrency(s.ticketMedio)}`);
+    if (s.roas !== null && s.roas !== undefined) statParts.push(`ROAS: ${s.roas.toFixed(1)}x`);
+    if (statParts.length) lines.push(`Métricas comerciais derivadas: ${statParts.join(', ')}.`);
+  }
 
   if (built.leadsSource && built.leadsSource.length) {
     lines.push(`Distribuição por plataforma: ${built.leadsSource.map(s => `${s.name} (${s.pct}% dos leads)`).join(', ')}.`);
@@ -604,10 +634,10 @@ function buildStrategicInsightsContext(clientName, built, campaigns, leadsRows, 
 // no Supabase, associados ao fingerprint dos dados no momento da geração.
 // Só chama a IA de fato quando não existe cache ainda ou quando os dados
 // mudaram desde a última geração; caso contrário reaproveita o cache.
-async function maybeGenerateStrategicInsights(clientName, slug, campaigns, leadsRows, targetsRows, built) {
+async function maybeGenerateStrategicInsights(clientName, slug, campaigns, leadsRows, targetsRows, built, customFieldValues) {
   if (!campaigns.length) return;
 
-  const fingerprint = computeDataFingerprint(campaigns, leadsRows, targetsRows);
+  const fingerprint = computeDataFingerprint(campaigns, leadsRows, targetsRows, customFieldValues);
 
   const { data: cached } = await supabaseClient
     .from('client_ai_insights')
@@ -6108,6 +6138,27 @@ function buildAssistantContext() {
     }
     if (Array.isArray(d.customMetrics) && d.customMetrics.length) {
       lines.push(`Métricas personalizadas (definidas pela agência) de ${currentClient}: ${d.customMetrics.map(m => `${m.name}: ${Math.round(m.value).toLocaleString('pt-BR')}${m.unit ? ' ' + m.unit : ''}`).join(', ')}.`);
+    }
+
+    // Histórico dia a dia (ou por semana/quinzena/mês, conforme a
+    // frequência do campo) de cada métrica comercial mapeada — sem isso a
+    // IA só via o TOTAL do período aberto e não conseguia responder
+    // perguntas sobre um dia específico ("e no dia 10?").
+    if (Array.isArray(d.customFieldsDefs) && d.customFieldsDefs.length && Array.isArray(d.customFieldValuesAll)) {
+      const mappedFields = d.customFieldsDefs.filter(f => f.metric_mapping && f.metric_mapping !== 'none');
+      mappedFields.forEach(field => {
+        const entries = d.customFieldValuesAll
+          .filter(v => v.field_id === field.id)
+          .sort((a, b) => (a.period_date < b.period_date ? 1 : -1))
+          .slice(0, 60);
+        if (!entries.length) return;
+        const label = field.metric_mapping === 'custom_metric' ? field.name : (COMMERCIAL_METRIC_LABELS[field.metric_mapping] || field.name);
+        const points = entries.map(v => `${v.period_date}: ${v.value_number !== null && v.value_number !== undefined ? v.value_number : (v.value_text || '—')}`).join('; ');
+        lines.push(`Histórico por período informado pelo cliente para "${label}" (campo "${field.name}", frequência ${CUSTOM_FIELD_FREQUENCY_LABELS[field.frequency] || field.frequency}): ${points}.`);
+      });
+      if (mappedFields.length) {
+        lines.push(`Quando perguntarem sobre um dia/semana/mês específico de ${currentClient} (ex: "e no dia 10?", "e essa semana?"), procure a(s) data(s) correspondente(s) no histórico acima — não responda só com o total geral.`);
+      }
     }
 
     if (Array.isArray(d.insights) && d.insights.length) {
