@@ -271,26 +271,21 @@ function unifyDailySeries(importByDate, portalByDate) {
 // e o contexto da IA — sempre respeitando o recorte de linhas já filtrado
 // pelo período (quem chama já filtra leadsRows/customFieldValues por data).
 //
-// IMPORTANTE: o histórico importado (leads_sales) só entra na unificação
-// quando a agência já criou um campo ATIVO mapeado pra esse tipo (sales ou
-// revenue) — ou seja, só depois que o cliente "conecta" a métrica. Sem
-// campo mapeado, nada muda: Vendas continua caindo no proxy de conversões
-// de mídia e Receita continua vindo de campaign_metrics, exatamente como
-// antes. Isso evita que clientes que nunca usaram campo personalizado
-// tenham a Receita/Vendas trocada de uma hora pra outra por causa de leads
-// antigos importados pra outro propósito (ex: só motivos de perda).
+// Vendas/Receita reais importadas (linhas de leads_sales com sale_value ou
+// revenue preenchidos) SEMPRE aparecem, com ou sem campo personalizado —
+// o campo personalizado (metric_mapping) não é uma "chave" pra desbloquear
+// esse histórico, ele só define de onde vêm os preenchimentos NOVOS feitos
+// pelo cliente no portal a partir de quando o campo existir. Sem campo
+// nenhum, a métrica é só o histórico importado; com campo, some com o que
+// o portal for preenchendo dali pra frente (portal tem prioridade no
+// mesmo dia, nunca duplica).
 function resolveUnifiedSalesAndRevenue(leadsRows, customFields, customFieldValues) {
-  const emptySeries = { total: 0, bySource: { import: 0, portal: 0 }, records: [] };
-  const hasSalesField = (customFields || []).some(f => f.active && f.metric_mapping === 'sales');
-  const hasRevenueField = (customFields || []).some(f => f.active && f.metric_mapping === 'revenue');
-  if (!hasSalesField && !hasRevenueField) return { sales: emptySeries, revenue: emptySeries };
-
   const importedDaily = buildImportedDailyCounts(leadsRows);
   const portalSalesDaily = buildPortalDailyValues(customFields, customFieldValues, 'sales');
   const portalRevenueDaily = buildPortalDailyValues(customFields, customFieldValues, 'revenue');
   return {
-    sales: hasSalesField ? unifyDailySeries(importedDaily.sales, portalSalesDaily) : emptySeries,
-    revenue: hasRevenueField ? unifyDailySeries(importedDaily.revenue, portalRevenueDaily) : emptySeries
+    sales: unifyDailySeries(importedDaily.sales, portalSalesDaily),
+    revenue: unifyDailySeries(importedDaily.revenue, portalRevenueDaily)
   };
 }
 
@@ -369,16 +364,16 @@ function renderCommercialMetrics(data) {
   });
 
   if (stats.custoPorVenda !== null && stats.custoPorVenda !== undefined) {
-    html += cardHtml('Custo por venda', formatCurrency(stats.custoPorVenda), 'Investimento ÷ Vendas informadas');
+    html += cardHtml('Custo por venda', formatCurrency(stats.custoPorVenda), 'Investimento ÷ Vendas (real)');
   }
   if (stats.taxaLeadVenda !== null && stats.taxaLeadVenda !== undefined) {
-    html += cardHtml('Taxa lead → venda', `${stats.taxaLeadVenda.toFixed(1)}%`, 'Vendas informadas ÷ Leads');
+    html += cardHtml('Taxa lead → venda', `${stats.taxaLeadVenda.toFixed(1)}%`, 'Vendas (real) ÷ Leads');
   }
   if (stats.ticketMedio !== null && stats.ticketMedio !== undefined) {
-    html += cardHtml('Ticket médio', formatCurrency(stats.ticketMedio), 'Receita informada ÷ Vendas informadas');
+    html += cardHtml('Ticket médio', formatCurrency(stats.ticketMedio), 'Receita (real) ÷ Vendas (real)');
   }
   if (stats.roas !== null && stats.roas !== undefined) {
-    html += cardHtml('ROAS', `${stats.roas.toFixed(1)}x`, 'Receita informada ÷ Investimento');
+    html += cardHtml('ROAS', `${stats.roas.toFixed(1)}x`, 'Receita (real) ÷ Investimento');
   }
   metricsGrid.innerHTML = html;
 
@@ -732,9 +727,10 @@ function buildStrategicInsightsContext(clientName, built, campaigns, leadsRows, 
       .map(t => {
         const label = COMMERCIAL_METRIC_LABELS[t];
         const val = t === 'revenue' ? formatCurrency(built.commercial[t].value) : Math.round(built.commercial[t].value).toLocaleString('pt-BR');
-        return `${label}: ${val}`;
+        const source = (t === 'sales' || t === 'revenue') && built.commercial[t].bySource ? ` [${describeSourceLabel(built.commercial[t].bySource).text}]` : ' [Fonte: Informado pelo cliente]';
+        return `${label}: ${val}${source}`;
       });
-    lines.push(`Dado comercial OFICIAL informado pelo cliente (fonte manual, prioritário sobre métricas de mídia): ${commercialLines.join('; ')}.`);
+    lines.push(`Dado comercial OFICIAL (real, prioritário sobre métricas de mídia): ${commercialLines.join('; ')}.`);
   }
   if (built.commercialStats) {
     const s = built.commercialStats;
@@ -5667,10 +5663,11 @@ function handleCustomFieldFrequencyChange() {
 }
 
 // Quando a agência mapeia o campo pra Vendas ou Receita, avisa se esse
-// cliente já tem histórico importado (leads_sales) pra essa métrica — o
-// campo vai unificar automaticamente com esse histórico (dias já
-// importados continuam vindo da planilha, dias novos vêm do portal), então
-// isso é só um aviso informativo, não uma decisão de conectar ou não.
+// cliente já tem histórico importado (leads_sales) pra essa métrica. Esse
+// histórico já aparece no Dashboard independente do campo existir — o
+// campo NÃO é uma chave pra "desbloquear" o dado importado, ele só passa a
+// alimentar a mesma métrica com os preenchimentos novos feitos no portal
+// dali pra frente. Por isso o aviso é só informativo/de continuidade.
 async function handleCustomFieldMappingChange() {
   const mapping = document.getElementById('cf-metric-mapping').value;
   const banner = document.getElementById('cf-history-match-banner');
@@ -5694,12 +5691,11 @@ async function handleCustomFieldMappingChange() {
     return;
   }
 
-  const dates = rows.map(l => l.date).filter(Boolean).sort();
   const label = mapping === 'sales' ? 'Vendas' : 'Receita';
   const countText = mapping === 'sales'
     ? `${rows.length} venda(s)`
     : formatCurrency(rows.reduce((s, l) => s + (Number(l.revenue) || Number(l.sale_value) || 0), 0));
-  banner.innerText = `📊 Encontramos histórico de ${label} importado pra ${currentClient}: ${countText} desde ${formatDate(new Date(dates[0] + 'T00:00:00'))}. Esse campo vai complementar esse histórico automaticamente — dias já importados continuam vindo da planilha, e os novos preenchimentos do portal passam a valer a partir de quando forem feitos, sem duplicar.`;
+  banner.innerText = `📊 Encontramos ${countText} em ${label.toLowerCase()} histórica importada pra ${currentClient} — já visível no Dashboard, com ou sem este campo. Este campo será usado só pra continuar alimentando essa mesma métrica pelo portal, a partir de agora.`;
   banner.style.display = 'block';
 }
 
@@ -6334,12 +6330,13 @@ function buildAssistantContext() {
         .map(t => {
           const label = COMMERCIAL_METRIC_LABELS[t];
           const val = t === 'revenue' ? formatCurrency(d.commercial[t].value) : Math.round(d.commercial[t].value).toLocaleString('pt-BR');
-          return `${label}: ${val}`;
+          const source = (t === 'sales' || t === 'revenue') && d.commercial[t].bySource ? ` [${describeSourceLabel(d.commercial[t].bySource).text}]` : ' [Fonte: Informado pelo cliente]';
+          return `${label}: ${val}${source}`;
         });
-      lines.push(`DADO OFICIAL informado pelo cliente ${currentClient} no portal (fonte manual, não é conversão de mídia): ${commercialLines.join('; ')}.`);
+      lines.push(`DADO OFICIAL (comercial real) de ${currentClient} — não é conversão de mídia: ${commercialLines.join('; ')}.`);
     }
     if (d.salesResolved !== null && d.salesResolved !== undefined) {
-      lines.push(`IMPORTANTE: quando perguntarem "quantas vendas" de ${currentClient}, a resposta é ${Math.round(d.salesResolved).toLocaleString('pt-BR')} (vendas reais informadas pelo cliente) — NÃO confundir com "Conversão"/CPA acima, que são métricas de mídia (rastreadas pelo anúncio, não são vendas confirmadas).`);
+      lines.push(`IMPORTANTE: quando perguntarem "quantas vendas" de ${currentClient}, a resposta é ${Math.round(d.salesResolved).toLocaleString('pt-BR')} (vendas reais — importadas e/ou informadas pelo cliente, ver fonte acima) — NÃO confundir com "Conversão"/CPA acima, que são métricas de mídia (rastreadas pelo anúncio, não são vendas confirmadas).`);
     }
     if (d.commercialStats) {
       const s = d.commercialStats;

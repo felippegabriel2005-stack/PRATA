@@ -392,21 +392,16 @@ function unifyDailySeriesPortal(importByDate, portalByDate) {
   return { total, bySource, records };
 }
 
-// Igual à versão de script.js: só entra o histórico importado (leads_sales)
-// quando já existe campo ativo mapeado pra esse tipo — sem isso, nada muda
-// pra clientes que nunca usaram campo personalizado.
+// Igual à versão de script.js: histórico importado (leads_sales) SEMPRE
+// aparece, com ou sem campo personalizado — o campo só define de onde vêm
+// os preenchimentos novos feitos pelo cliente no portal dali pra frente.
 function resolveUnifiedSalesAndRevenuePortal(leadsRows, customFields, customFieldValues) {
-  const emptySeries = { total: 0, bySource: { import: 0, portal: 0 }, records: [] };
-  const hasSalesField = (customFields || []).some(f => f.active && f.metric_mapping === 'sales');
-  const hasRevenueField = (customFields || []).some(f => f.active && f.metric_mapping === 'revenue');
-  if (!hasSalesField && !hasRevenueField) return { sales: emptySeries, revenue: emptySeries };
-
   const importedDaily = buildImportedDailyCountsPortal(leadsRows);
   const portalSalesDaily = buildPortalDailyValuesPortal(customFields, customFieldValues, 'sales');
   const portalRevenueDaily = buildPortalDailyValuesPortal(customFields, customFieldValues, 'revenue');
   return {
-    sales: hasSalesField ? unifyDailySeriesPortal(importedDaily.sales, portalSalesDaily) : emptySeries,
-    revenue: hasRevenueField ? unifyDailySeriesPortal(importedDaily.revenue, portalRevenueDaily) : emptySeries
+    sales: unifyDailySeriesPortal(importedDaily.sales, portalSalesDaily),
+    revenue: unifyDailySeriesPortal(importedDaily.revenue, portalRevenueDaily)
   };
 }
 
@@ -479,16 +474,16 @@ function renderPortalCommercialMetrics(data) {
   });
 
   if (stats.custoPorVenda !== null && stats.custoPorVenda !== undefined) {
-    html += cardHtml('Custo por venda', formatCurrencyPortal(stats.custoPorVenda), 'Investimento ÷ Vendas informadas');
+    html += cardHtml('Custo por venda', formatCurrencyPortal(stats.custoPorVenda), 'Investimento ÷ Vendas (real)');
   }
   if (stats.taxaLeadVenda !== null && stats.taxaLeadVenda !== undefined) {
-    html += cardHtml('Taxa lead → venda', `${stats.taxaLeadVenda.toFixed(1)}%`, 'Vendas informadas ÷ Leads');
+    html += cardHtml('Taxa lead → venda', `${stats.taxaLeadVenda.toFixed(1)}%`, 'Vendas (real) ÷ Leads');
   }
   if (stats.ticketMedio !== null && stats.ticketMedio !== undefined) {
-    html += cardHtml('Ticket médio', formatCurrencyPortal(stats.ticketMedio), 'Receita informada ÷ Vendas informadas');
+    html += cardHtml('Ticket médio', formatCurrencyPortal(stats.ticketMedio), 'Receita (real) ÷ Vendas (real)');
   }
   if (stats.roas !== null && stats.roas !== undefined) {
-    html += cardHtml('ROAS', `${stats.roas.toFixed(1)}x`, 'Receita informada ÷ Investimento');
+    html += cardHtml('ROAS', `${stats.roas.toFixed(1)}x`, 'Receita (real) ÷ Investimento');
   }
   metricsGrid.innerHTML = html;
 
