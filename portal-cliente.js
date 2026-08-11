@@ -168,56 +168,6 @@ function formatNumberPortal(val) {
   return Math.round(val).toLocaleString('pt-BR');
 }
 
-// Mesma regra do painel da agência (script.js: computeClientStatusFromData) —
-// duplicada aqui de propósito, já que este portal é pensado pra um dia rodar
-// como projeto Vercel separado, sem depender do script.js da agência.
-function computePortalClientStatus(raw, targetsRows) {
-  const reasons = [];
-  let severity = 0;
-
-  if (raw.invest > 0) {
-    const roi = ((raw.revenue - raw.invest) / raw.invest) * 100;
-    if (roi < 0) {
-      severity = Math.max(severity, 2);
-    } else if (roi < 50) {
-      severity = Math.max(severity, 1);
-    }
-    if (raw.conversions === 0) {
-      severity = Math.max(severity, 2);
-    }
-  }
-
-  const actualByMetric = {
-    invest: raw.invest,
-    impress: raw.impressions,
-    clicks: raw.clicks,
-    views: raw.pageViews,
-    convs: raw.conversions,
-    cpa: raw.conversions > 0 ? raw.invest / raw.conversions : null,
-    cpc: raw.clicks > 0 ? raw.invest / raw.clicks : null,
-    cpm: raw.impressions > 0 ? (raw.invest / raw.impressions) * 1000 : null,
-    ctr: raw.impressions > 0 ? (raw.clicks / raw.impressions) * 100 : null,
-    convrate: raw.pageViews > 0 ? (raw.conversions / raw.pageViews) * 100 : null
-  };
-
-  (targetsRows || []).forEach(t => {
-    const actual = actualByMetric[t.metric_name];
-    const target = Number(t.target_value);
-    if (actual === null || actual === undefined || !target) return;
-
-    const rule = t.rule || '';
-    let ratio = null;
-    if (rule.includes('Menor')) ratio = actual / target;
-    else if (rule.includes('Maior')) ratio = target / actual;
-    if (ratio === null) return;
-
-    if (ratio > 1.3) severity = Math.max(severity, 2);
-    else if (ratio > 1.1) severity = Math.max(severity, 1);
-  });
-
-  return severity === 2 ? 'critical' : severity === 1 ? 'attention' : 'healthy';
-}
-
 // Mesma matriz que a agência vê no Dashboard Filho: KPIs, Insights de IA
 // (reaproveita o cache já gerado em client_ai_insights — não chama a IA de
 // novo daqui) e Funil do cliente, calculados a partir do campaign_metrics
@@ -233,9 +183,8 @@ let portalCampaignsAll = [];
 let portalChartData = null;
 
 async function loadClientDashboardData() {
-  const [{ data: campaigns }, { data: targets }, { data: leadsRows }, { data: aiInsightRow }, { data: customFields }, { data: customFieldValues }] = await Promise.all([
+  const [{ data: campaigns }, { data: leadsRows }, { data: aiInsightRow }, { data: customFields }, { data: customFieldValues }] = await Promise.all([
     supabaseClient.from('campaign_metrics').select('*').eq('client_slug', portalClientSlug),
-    supabaseClient.from('targets').select('*').eq('client_slug', portalClientSlug),
     supabaseClient.from('leads_sales').select('*').eq('client_slug', portalClientSlug),
     supabaseClient.from('client_ai_insights').select('insights').eq('client_slug', portalClientSlug).maybeSingle(),
     supabaseClient.from('custom_fields').select('*').eq('client_slug', portalClientSlug).eq('active', true),
@@ -252,12 +201,6 @@ async function loadClientDashboardData() {
   document.getElementById('portal-num-cpl').innerText = raw.leads > 0 ? formatCurrencyPortal(cpl) : '—';
   document.getElementById('portal-num-cpa').innerText = raw.conversions > 0 ? formatCurrencyPortal(cpa) : '—';
   document.getElementById('portal-num-roi').innerText = `${Math.round(roi)}%`;
-
-  const status = computePortalClientStatus(raw, targets || []);
-  const statusLabels = { healthy: 'Saudável', attention: 'Atenção', critical: 'Crítico' };
-  const badge = document.getElementById('portal-status-badge');
-  badge.innerText = statusLabels[status];
-  badge.className = `table-badge ${status}`;
 
   // Insights de IA — usa o cache já gerado pro painel da agência; se ainda
   // não existir, cai num resumo simples calculado na hora (sem chamar IA).
