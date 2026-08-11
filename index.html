@@ -222,6 +222,7 @@
                 <span class="card-title">Receita Gerada</span>
               </div>
               <div class="card-value highlight-green" id="val-receita">R$2,84M</div>
+              <span class="card-source-badge" id="val-receita-source-badge" style="display:none; font-size:9px; color:var(--text-secondary);">Inclui receita informada por clientes</span>
               <div class="card-footer">
                 <span class="card-trend up" id="trend-receita">▲ +32%</span>
                 <span class="card-period-label">vs período anterior</span>
@@ -325,6 +326,7 @@
               <div class="funnel-step">
                 <span class="funnel-step-label">Vendas</span>
                 <span class="funnel-step-value" id="funnel-val-4">342</span>
+                <span class="card-source-badge" id="funnel-vendas-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Inclui vendas informadas por clientes</span>
               </div>
             </div>
             
@@ -553,6 +555,7 @@
           <div class="metric-card">
             <span class="card-title">Receita</span>
             <div class="card-value highlight-green" id="c-num-receita">R$520k</div>
+            <span class="card-source-badge" id="c-receita-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Fonte: Informado pelo cliente</span>
           </div>
           <!-- Conversão -->
           <div class="metric-card">
@@ -639,6 +642,7 @@
               <div class="funnel-step">
                 <span class="funnel-step-label">Vendas</span>
                 <span class="funnel-step-value" id="c-funnel-val-4">38</span>
+                <span class="card-source-badge" id="c-vendas-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Fonte: Informado pelo cliente</span>
               </div>
             </div>
             
@@ -664,9 +668,23 @@
         </section>
 
         <!-- Separador -->
-        <div class="section-separator">
+        <div class="section-separator" id="c-commercial-separator" style="display:none;">
           <div class="separator-diamond"></div>
         </div>
+
+        <!-- Métricas Comerciais: só aparece quando o cliente tem pelo menos um
+             campo personalizado mapeado (vendas/receita/propostas/etc.) com
+             valor informado — dado manual vira fonte oficial, sempre com a
+             origem visível. -->
+        <section class="section-container" id="c-commercial-section" style="display:none;">
+          <h2 class="section-heading">Métricas comerciais <span style="font-size: 10px; font-weight: 400; color: var(--text-secondary);">(informadas pelo cliente)</span></h2>
+          <div class="metrics-row-five" id="c-commercial-metrics-grid">
+            <!-- Carregado via JS: Custo por venda, Taxa lead→venda, Ticket médio, ROAS, etc. -->
+          </div>
+          <div class="metrics-row-five" id="c-custom-metrics-grid" style="margin-top: 12px;">
+            <!-- Carregado via JS: campos mapeados como "Métrica personalizada" -->
+          </div>
+        </section>
 
         <!-- Rodapé do Cliente (Origem e Perda lado a lado) -->
         <div class="client-detail-grid-two-columns" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
@@ -1900,17 +1918,19 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="cf-metric-mapping">Usar este campo em alguma métrica? (opcional, preparado para o futuro)</label>
+          <label class="form-label" for="cf-metric-mapping">Usar este campo em alguma métrica?</label>
           <select id="cf-metric-mapping" class="form-select">
-            <option value="none">Não mapear agora</option>
-            <option value="revenue">Receita</option>
+            <option value="none">Não usar em métrica</option>
             <option value="sales">Vendas</option>
-            <option value="leads">Leads</option>
-            <option value="conversions">Conversões</option>
-            <option value="cancellations">Cancelamentos</option>
+            <option value="revenue">Receita</option>
+            <option value="proposals">Propostas</option>
+            <option value="appointments">Agendamentos</option>
             <option value="service">Atendimentos</option>
-            <option value="custom">Métrica personalizada</option>
+            <option value="cancellations">Cancelamentos</option>
+            <option value="qualified">Leads qualificados</option>
+            <option value="custom_metric">Métrica personalizada</option>
           </select>
+          <span style="font-size: 10px; color: var(--text-secondary); display: block; margin-top: 4px;">Quando mapeado, o valor preenchido pelo cliente vira a fonte oficial dessa métrica no Dashboard (em vez de dado de mídia), com a origem sempre identificada como "Informado pelo cliente".</span>
         </div>
 
         <div class="modal-footer">

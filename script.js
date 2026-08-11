@@ -149,7 +149,115 @@ function getPlatformColor(platform, index) {
   return PLATFORM_COLOR_FALLBACKS[(index || 0) % PLATFORM_COLOR_FALLBACKS.length];
 }
 
-function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows) {
+// Métricas comerciais que podem ser "assumidas" por um campo personalizado
+// mapeado — nunca métricas de mídia (investimento/impressões/cliques/page
+// views/leads/conversões de mídia), que são sempre de campaign_metrics.
+const COMMERCIAL_METRIC_LABELS = {
+  sales: 'Vendas',
+  revenue: 'Receita',
+  proposals: 'Propostas',
+  appointments: 'Agendamentos',
+  service: 'Atendimentos',
+  cancellations: 'Cancelamentos',
+  qualified: 'Leads qualificados'
+};
+
+// Soma os custom_field_values de cada campo ATIVO mapeado, agrupando por
+// tipo de métrica comercial (sales/revenue/...). Quando existe valor
+// mapeado pra um tipo, ele é a fonte OFICIAL dessa métrica — quem decide o
+// fallback (o que usar quando não há mapeamento) é o código que chama isso.
+function resolveCommercialMetrics(customFields, customFieldValues) {
+  const resolved = {};
+  const customMetrics = [];
+
+  const valuesByField = {};
+  (customFieldValues || []).forEach(v => {
+    if (!valuesByField[v.field_id]) valuesByField[v.field_id] = [];
+    valuesByField[v.field_id].push(v);
+  });
+
+  (customFields || []).forEach(field => {
+    if (!field.active || !field.metric_mapping || field.metric_mapping === 'none') return;
+    const values = valuesByField[field.id] || [];
+    const sum = values.reduce((s, v) => s + (Number(v.value_number) || 0), 0);
+
+    if (field.metric_mapping === 'custom_metric') {
+      customMetrics.push({ name: field.name, value: sum, unit: field.unit || '' });
+      return;
+    }
+
+    if (!resolved[field.metric_mapping]) resolved[field.metric_mapping] = { value: 0, fieldNames: [] };
+    resolved[field.metric_mapping].value += sum;
+    resolved[field.metric_mapping].fieldNames.push(field.name);
+  });
+
+  return { resolved, customMetrics };
+}
+
+// Preenche a seção "Métricas comerciais" do Dashboard Filho — só aparece
+// quando existe pelo menos um campo personalizado mapeado com valor. Cada
+// card deixa a origem explícita ("Fonte: Informado pelo cliente") pra nunca
+// esconder que o dado veio do portal, não de mídia.
+function renderCommercialMetrics(data) {
+  const separator = document.getElementById('c-commercial-separator');
+  const section = document.getElementById('c-commercial-section');
+  const metricsGrid = document.getElementById('c-commercial-metrics-grid');
+  const customGrid = document.getElementById('c-custom-metrics-grid');
+  if (!section || !metricsGrid || !customGrid) return;
+
+  const commercial = data.commercial || {};
+  const customMetrics = data.customMetrics || [];
+  const stats = data.commercialStats || {};
+  const hasCommercial = Object.keys(commercial).length > 0;
+  const hasCustom = customMetrics.length > 0;
+
+  const receitaBadge = document.getElementById('c-receita-source-badge');
+  if (receitaBadge) receitaBadge.style.display = data.revenueSource === 'manual' ? 'block' : 'none';
+  const vendasBadge = document.getElementById('c-vendas-source-badge');
+  if (vendasBadge) vendasBadge.style.display = data.salesResolved !== null && data.salesResolved !== undefined ? 'block' : 'none';
+
+  if (!hasCommercial && !hasCustom) {
+    separator.style.display = 'none';
+    section.style.display = 'none';
+    return;
+  }
+  separator.style.display = 'flex';
+  section.style.display = 'block';
+
+  const cardHtml = (title, value, extra) => `
+    <div class="metric-card">
+      <span class="card-title">${escapeHtml(title)}</span>
+      <div class="card-value">${value}</div>
+      <span class="card-source-badge" style="font-size:9px; color:var(--text-secondary); margin-top:2px; display:block;">${extra || 'Fonte: Informado pelo cliente'}</span>
+    </div>
+  `;
+
+  let html = '';
+  Object.keys(COMMERCIAL_METRIC_LABELS).forEach(type => {
+    if (!commercial[type]) return;
+    const label = COMMERCIAL_METRIC_LABELS[type];
+    const value = type === 'revenue' ? formatCurrency(commercial[type].value) : formatNumber(commercial[type].value);
+    html += cardHtml(label, value);
+  });
+
+  if (stats.custoPorVenda !== null && stats.custoPorVenda !== undefined) {
+    html += cardHtml('Custo por venda', formatCurrency(stats.custoPorVenda), 'Investimento ÷ Vendas informadas');
+  }
+  if (stats.taxaLeadVenda !== null && stats.taxaLeadVenda !== undefined) {
+    html += cardHtml('Taxa lead → venda', `${stats.taxaLeadVenda.toFixed(1)}%`, 'Vendas informadas ÷ Leads');
+  }
+  if (stats.ticketMedio !== null && stats.ticketMedio !== undefined) {
+    html += cardHtml('Ticket médio', formatCurrency(stats.ticketMedio), 'Receita informada ÷ Vendas informadas');
+  }
+  if (stats.roas !== null && stats.roas !== undefined) {
+    html += cardHtml('ROAS', `${stats.roas.toFixed(1)}x`, 'Receita informada ÷ Investimento');
+  }
+  metricsGrid.innerHTML = html;
+
+  customGrid.innerHTML = customMetrics.map(m => cardHtml(m.name, `${formatNumber(m.value)}${m.unit ? ' ' + escapeHtml(m.unit) : ''}`)).join('');
+}
+
+function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, customFields, customFieldValues) {
   let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
   const byPlatform = {};
   const byDate = {};
@@ -175,18 +283,44 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows) {
     byDate[c.date].convs += Number(c.conversions) || 0;
   });
 
+  // Métricas comerciais mapeadas por campo personalizado: quando existir
+  // campo ativo mapeado, o valor informado pelo cliente vira a fonte
+  // OFICIAL (prioridade sobre dado de mídia) — vendas/receita/propostas/
+  // atendimentos/cancelamentos/qualificados normalmente não vêm de mídia
+  // paga, então dado manual mapeado tem prioridade quando existir.
+  const { resolved: commercial, customMetrics } = resolveCommercialMetrics(customFields, customFieldValues);
+  const revenueSource = commercial.revenue ? 'manual' : 'media';
+  if (commercial.revenue) totalRevenue = commercial.revenue.value;
+  const salesResolved = commercial.sales ? commercial.sales.value : null;
+
   const conversaoPct = totalClicks > 0 ? (totalConvs / totalClicks) * 100 : 0;
   const cpl = totalLeads > 0 ? totalInvest / totalLeads : 0;
   const cpa = totalConvs > 0 ? totalInvest / totalConvs : 0;
   const roi = totalInvest > 0 ? ((totalRevenue - totalInvest) / totalInvest) * 100 : 0;
 
-  const funnel = [formatNumber(totalImpress), formatNumber(totalClicks), formatNumber(totalPageViews), formatNumber(totalConvs)];
+  // O último estágio do funil é rotulado "Vendas" na tela — quando existe
+  // venda real mapeada, mostra ela (e a % final bate com ela); sem
+  // mapeamento, continua caindo no proxy de conversões de mídia (como já
+  // era antes, só que agora deixando claro que é um proxy, não a venda em si).
+  const finalFunnelValue = salesResolved !== null ? salesResolved : totalConvs;
+  const finalFunnelPct = totalClicks > 0 ? (finalFunnelValue / totalClicks) * 100 : 0;
+
+  const funnel = [formatNumber(totalImpress), formatNumber(totalClicks), formatNumber(totalPageViews), formatNumber(finalFunnelValue)];
   const funnelPct = [
     '100%',
     totalImpress > 0 ? `${((totalClicks / totalImpress) * 100).toFixed(0)}%` : '0%',
     totalClicks > 0 ? `${((totalPageViews / totalClicks) * 100).toFixed(0)}%` : '0%',
-    `${conversaoPct.toFixed(1)}% final`
+    `${finalFunnelPct.toFixed(1)}% final`
   ];
+
+  // Estatísticas derivadas de vendas/receita reais (só fazem sentido quando
+  // existe um valor mapeado por campo personalizado — sem venda real
+  // informada, custo por venda/ticket médio real não têm como ser calculados).
+  const custoPorVenda = salesResolved > 0 ? totalInvest / salesResolved : null;
+  const taxaLeadVenda = salesResolved !== null && totalLeads > 0 ? (salesResolved / totalLeads) * 100 : null;
+  const taxaCliqueVenda = salesResolved !== null && totalClicks > 0 ? (salesResolved / totalClicks) * 100 : null;
+  const ticketMedio = salesResolved > 0 && commercial.revenue ? commercial.revenue.value / salesResolved : null;
+  const roas = commercial.revenue && totalInvest > 0 ? commercial.revenue.value / totalInvest : null;
 
   const platformColors = { 'Google Ads': '#3b82f6', 'Meta Ads': '#8b5cf6', 'LinkedIn Ads': '#0a66c2' };
   const platformList = Object.keys(byPlatform);
@@ -282,7 +416,8 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows) {
     impressions: totalImpress,
     clicks: totalClicks,
     pageViews: totalPageViews,
-    conversions: totalConvs
+    conversions: totalConvs,
+    sales: salesResolved
   };
 
   const { status: computedStatus, reasons: statusReasons } = computeClientStatusFromData(raw, targetsRows);
@@ -305,6 +440,22 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows) {
       roi: `${Math.round(roi)}%`
     },
     raw,
+    // Métricas comerciais resolvidas a partir de campos personalizados
+    // mapeados (vendas, receita, propostas, etc.) — cada uma com a origem
+    // ("manual" = informado pelo cliente no portal) pra nunca esconder de
+    // onde veio o dado. `customMetrics` são campos mapeados como "métrica
+    // personalizada" (usam o próprio nome do campo, ex: "Visitas presenciais").
+    commercial,
+    customMetrics,
+    revenueSource,
+    salesResolved,
+    commercialStats: {
+      custoPorVenda,
+      taxaLeadVenda,
+      taxaCliqueVenda,
+      ticketMedio,
+      roas
+    },
     updates: [
       { source: 'Planilha importada', time: importedAt, status: 'Atualizado', statusClass: 'healthy', obs: `${campaigns.length} linha(s) de campanha, ${leadsRows.length} lead(s)/venda(s) importados.` }
     ],
@@ -347,15 +498,17 @@ async function refreshClientDetailedDataIfReal(clientName) {
   if (realClientDataChecked.has(slug)) return;
   realClientDataChecked.add(slug);
 
-  const [{ data: campaigns }, { data: leadsRows }, { data: targetsRows }] = await Promise.all([
+  const [{ data: campaigns }, { data: leadsRows }, { data: targetsRows }, { data: customFields }, { data: customFieldValues }] = await Promise.all([
     supabaseClient.from('campaign_metrics').select('*').eq('client_slug', slug),
     supabaseClient.from('leads_sales').select('*').eq('client_slug', slug),
-    supabaseClient.from('targets').select('*').eq('client_slug', slug)
+    supabaseClient.from('targets').select('*').eq('client_slug', slug),
+    supabaseClient.from('custom_fields').select('*').eq('client_slug', slug).eq('active', true),
+    supabaseClient.from('custom_field_values').select('*').eq('client_slug', slug)
   ]);
 
   // Sempre monta o dashboard a partir do que existir no banco (zerado se não
   // houver nada ainda) — não usa mais o mock fictício como fallback.
-  const built = buildClientDetailedDataFromReal(campaigns || [], leadsRows || [], targetsRows || []);
+  const built = buildClientDetailedDataFromReal(campaigns || [], leadsRows || [], targetsRows || [], customFields || [], customFieldValues || []);
   clientDetailedData[clientName] = built;
 
   // Mantém o status do cliente na sidebar/Dashboard Pai em sincronia com o
@@ -541,58 +694,104 @@ function updateClientStatusesFromCampaigns(campaigns, targets) {
 // status (healthy/attention/critical) de cada cliente a partir dos dados
 // reais, em vez de depender só do valor gravado na importação/cadastro.
 async function refreshAgencyPeriodDataFromReal() {
-  const [{ data }, { data: targets }] = await Promise.all([
+  const [{ data }, { data: targets }, { data: allCustomFields }, { data: allCustomFieldValues }] = await Promise.all([
     supabaseClient.from('campaign_metrics').select('*'),
-    supabaseClient.from('targets').select('*')
+    supabaseClient.from('targets').select('*'),
+    supabaseClient.from('custom_fields').select('*').eq('active', true),
+    supabaseClient.from('custom_field_values').select('*')
   ]);
   const campaigns = data || [];
 
   updateClientStatusesFromCampaigns(campaigns, targets || []);
 
+  // Campos personalizados mapeados, agrupados por cliente — usados abaixo
+  // pra substituir receita/vendas de mídia pelo valor informado pelo
+  // cliente (fonte oficial), cliente a cliente, somando o resultado na
+  // carteira inteira. Mesma prioridade do Dashboard Filho: dado manual
+  // mapeado > dado de mídia, quando existir.
+  const customFieldsBySlug = {};
+  (allCustomFields || []).forEach(f => {
+    if (!customFieldsBySlug[f.client_slug]) customFieldsBySlug[f.client_slug] = [];
+    customFieldsBySlug[f.client_slug].push(f);
+  });
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const quarterStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
 
-  function aggregate(rows) {
-    let invest = 0, impress = 0, clicks = 0, pageViews = 0, leads = 0, convs = 0, revenue = 0;
+  function aggregate(rows, cfValues) {
+    let invest = 0, impress = 0, clicks = 0, pageViews = 0, leads = 0, convs = 0, revenue = 0, sales = 0;
+    let hasManualRevenue = false, hasManualSales = false;
+
+    const byClient = {};
     rows.forEach(c => {
+      const slug = c.client_slug;
+      if (!byClient[slug]) byClient[slug] = { invest: 0, impress: 0, clicks: 0, pageViews: 0, leads: 0, convs: 0, revenue: 0 };
+      byClient[slug].invest += Number(c.invest) || 0;
+      byClient[slug].impress += Number(c.impressions) || 0;
+      byClient[slug].clicks += Number(c.clicks) || 0;
+      byClient[slug].pageViews += Number(c.page_views) || 0;
+      byClient[slug].leads += Number(c.leads) || 0;
+      byClient[slug].convs += Number(c.conversions) || 0;
+      byClient[slug].revenue += Number(c.revenue) || 0;
+
       invest += Number(c.invest) || 0;
       impress += Number(c.impressions) || 0;
       clicks += Number(c.clicks) || 0;
       pageViews += Number(c.page_views) || 0;
       leads += Number(c.leads) || 0;
       convs += Number(c.conversions) || 0;
-      revenue += Number(c.revenue) || 0;
     });
+
+    // União dos clientes com campanha e dos clientes que só têm campo
+    // personalizado mapeado (sem mídia ainda) — ambos entram na soma.
+    const clientSlugs = new Set([...Object.keys(byClient), ...Object.keys(customFieldsBySlug)]);
+    clientSlugs.forEach(slug => {
+      const clientTotals = byClient[slug] || { invest: 0, impress: 0, clicks: 0, pageViews: 0, leads: 0, convs: 0, revenue: 0 };
+      const clientFields = customFieldsBySlug[slug] || [];
+      const clientValues = (cfValues || []).filter(v => v.client_slug === slug);
+      const { resolved } = resolveCommercialMetrics(clientFields, clientValues);
+
+      revenue += resolved.revenue ? resolved.revenue.value : clientTotals.revenue;
+      sales += resolved.sales ? resolved.sales.value : clientTotals.convs;
+      if (resolved.revenue) hasManualRevenue = true;
+      if (resolved.sales) hasManualSales = true;
+    });
+
     const conv = clicks > 0 ? (convs / clicks) * 100 : 0;
     const cpl = leads > 0 ? invest / leads : 0;
     const cpa = convs > 0 ? invest / convs : 0;
     const roi = invest > 0 ? ((revenue - invest) / invest) * 100 : 0;
+    const finalPct = clicks > 0 ? (sales / clicks) * 100 : 0;
     const trendLabel = rows.length > 0 ? '■ Dados importados' : '— Sem dados importados';
     return {
       investimento: formatCurrency(invest),
       trendInvestimento: trendLabel,
       receita: formatCurrency(revenue),
       trendReceita: trendLabel,
+      hasManualRevenue,
+      hasManualSales,
       conversao: `${conv.toFixed(1)}%`,
       cpl: leads > 0 ? formatCurrency(cpl) : '—',
       trendCpl: leads > 0 ? '■ Estável' : '— Sem leads',
       cpa: convs > 0 ? formatCurrency(cpa) : '—',
       roi: `${Math.round(roi)}%`,
       trendRoi: trendLabel,
-      funnel: [formatNumber(impress), formatNumber(clicks), formatNumber(pageViews), formatNumber(convs)],
+      funnel: [formatNumber(impress), formatNumber(clicks), formatNumber(pageViews), formatNumber(sales)],
       funnelPct: [
         '100%',
         impress > 0 ? `${((clicks / impress) * 100).toFixed(0)}%` : '0%',
         clicks > 0 ? `${((pageViews / clicks) * 100).toFixed(0)}%` : '0%',
-        `${conv.toFixed(1)}% final`
+        `${finalPct.toFixed(1)}% final`
       ]
     };
   }
 
-  agencyPeriodData['All Time'] = aggregate(campaigns);
-  agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart));
-  agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart));
+  const valuesInRange = (start) => (allCustomFieldValues || []).filter(v => !start || new Date(v.period_date) >= start);
+
+  agencyPeriodData['All Time'] = aggregate(campaigns, allCustomFieldValues || []);
+  agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart), valuesInRange(monthStart));
+  agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart), valuesInRange(quarterStart));
 
   usingRealAgencyData = campaigns.length > 0;
 }
@@ -2423,14 +2622,19 @@ function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
     const currentConvs = raw.conversions * factor;
     const currentImpress = raw.impressions * factor;
     const currentPageViews = raw.pageViews * factor;
+    const currentSales = (raw.sales !== null && raw.sales !== undefined) ? raw.sales * factor : null;
 
     document.getElementById('c-num-investimento').innerText = formatCurrencyThousands(currentInvest);
     document.getElementById('c-num-receita').innerText = formatCurrencyThousands(currentReceita);
 
+    // Estágio final do funil ("Vendas"): quando existe venda real mapeada,
+    // ela é o valor exibido/considerado — não o proxy de conversões de mídia.
+    const finalVal = currentSales !== null ? currentSales : currentConvs;
+
     document.getElementById('c-funnel-val-1').innerText = Math.round(currentImpress).toLocaleString('pt-BR');
     document.getElementById('c-funnel-val-2').innerText = Math.round(currentClicks).toLocaleString('pt-BR');
     document.getElementById('c-funnel-val-3').innerText = Math.round(currentPageViews).toLocaleString('pt-BR');
-    document.getElementById('c-funnel-val-4').innerText = Math.round(currentConvs).toLocaleString('pt-BR');
+    document.getElementById('c-funnel-val-4').innerText = Math.round(finalVal).toLocaleString('pt-BR');
 
     const cplVal = currentLeads > 0 ? currentInvest / currentLeads : 0;
     const cpaVal = currentConvs > 0 ? currentInvest / currentConvs : 0;
@@ -2450,10 +2654,34 @@ function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
 
     const convVal = currentClicks > 0 ? ((currentConvs / currentClicks) * 100).toFixed(1) : '0.0';
     document.getElementById('c-num-conversao').innerText = `${convVal}%`;
+
+    // Re-renderiza a seção de Métricas Comerciais com os valores escalados
+    // pro período selecionado (mesmo fator aplicado às demais métricas).
+    const scaledCommercial = {};
+    Object.keys(clientData.commercial || {}).forEach(type => {
+      scaledCommercial[type] = { value: clientData.commercial[type].value * factor, fieldNames: clientData.commercial[type].fieldNames };
+    });
+    const scaledRevenue = scaledCommercial.revenue ? scaledCommercial.revenue.value : null;
+    renderCommercialMetrics({
+      commercial: scaledCommercial,
+      customMetrics: (clientData.customMetrics || []).map(m => ({ ...m, value: m.value * factor })),
+      revenueSource: clientData.revenueSource,
+      salesResolved: currentSales,
+      commercialStats: {
+        custoPorVenda: currentSales > 0 ? currentInvest / currentSales : null,
+        taxaLeadVenda: currentSales !== null && currentLeads > 0 ? (currentSales / currentLeads) * 100 : null,
+        taxaCliqueVenda: currentSales !== null && currentClicks > 0 ? (currentSales / currentClicks) * 100 : null,
+        ticketMedio: currentSales > 0 && scaledRevenue !== null ? scaledRevenue / currentSales : null,
+        roas: scaledRevenue !== null && currentInvest > 0 ? scaledRevenue / currentInvest : null
+      }
+    });
     return;
   }
 
-  // Fallback (sem "raw" — dado fictício de demonstração antigo)
+  // Fallback (sem "raw" — dado fictício de demonstração antigo): não tem
+  // campos personalizados, então a seção de Métricas Comerciais some.
+  renderCommercialMetrics({ commercial: {}, customMetrics: [], commercialStats: {} });
+
   const getVal = (str) => {
     if (!str) return 0;
     return parseInt(str.replace(/\./g, '').replace(/[^0-9]/g, ''));
@@ -4312,7 +4540,12 @@ function updateDashboardPaiValues(data) {
   document.getElementById('val-conversao').innerText = data.conversao;
   document.getElementById('val-cpl').innerText = data.cpl;
   document.getElementById('val-cpa').innerText = data.cpa;
-  
+
+  const receitaBadge = document.getElementById('val-receita-source-badge');
+  if (receitaBadge) receitaBadge.style.display = data.hasManualRevenue ? 'block' : 'none';
+  const vendasBadge = document.getElementById('funnel-vendas-source-badge');
+  if (vendasBadge) vendasBadge.style.display = data.hasManualSales ? 'block' : 'none';
+
   document.getElementById('trend-investimento').innerText = data.trendInvestimento;
   document.getElementById('trend-receita').innerText = data.trendReceita;
   document.getElementById('trend-roi').innerText = data.trendRoi;

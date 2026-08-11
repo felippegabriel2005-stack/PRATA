@@ -164,6 +164,10 @@ function formatCurrencyThousandsPortal(val) {
   return `R$${Math.round(val / 1000)}k`;
 }
 
+function formatNumberPortal(val) {
+  return Math.round(val).toLocaleString('pt-BR');
+}
+
 // Mesma regra do painel da agência (script.js: computeClientStatusFromData) —
 // duplicada aqui de propósito, já que este portal é pensado pra um dia rodar
 // como projeto Vercel separado, sem depender do script.js da agência.
@@ -229,15 +233,17 @@ let portalCampaignsAll = [];
 let portalChartData = null;
 
 async function loadClientDashboardData() {
-  const [{ data: campaigns }, { data: targets }, { data: leadsRows }, { data: aiInsightRow }] = await Promise.all([
+  const [{ data: campaigns }, { data: targets }, { data: leadsRows }, { data: aiInsightRow }, { data: customFields }, { data: customFieldValues }] = await Promise.all([
     supabaseClient.from('campaign_metrics').select('*').eq('client_slug', portalClientSlug),
     supabaseClient.from('targets').select('*').eq('client_slug', portalClientSlug),
     supabaseClient.from('leads_sales').select('*').eq('client_slug', portalClientSlug),
-    supabaseClient.from('client_ai_insights').select('insights').eq('client_slug', portalClientSlug).maybeSingle()
+    supabaseClient.from('client_ai_insights').select('insights').eq('client_slug', portalClientSlug).maybeSingle(),
+    supabaseClient.from('custom_fields').select('*').eq('client_slug', portalClientSlug).eq('active', true),
+    supabaseClient.from('custom_field_values').select('*').eq('client_slug', portalClientSlug)
   ]);
 
   const rows = campaigns || [];
-  const built = buildPortalClientData(rows, leadsRows || []);
+  const built = buildPortalClientData(rows, leadsRows || [], customFields || [], customFieldValues || []);
   const { raw, conversaoPct, cpl, cpa, roi } = built;
 
   document.getElementById('portal-num-investimento').innerText = formatCurrencyThousandsPortal(raw.invest);
@@ -279,20 +285,22 @@ async function loadClientDashboardData() {
 
   // Funil do cliente
   const funnelSection = document.getElementById('portal-funnel-section');
-  if (rows.length > 0) {
+  if (rows.length > 0 || Object.keys(built.commercial || {}).length > 0) {
     funnelSection.style.display = 'block';
     document.getElementById('portal-funnel-val-1').innerText = Math.round(raw.impressions).toLocaleString('pt-BR');
     document.getElementById('portal-funnel-val-2').innerText = Math.round(raw.clicks).toLocaleString('pt-BR');
     document.getElementById('portal-funnel-val-3').innerText = Math.round(raw.pageViews).toLocaleString('pt-BR');
-    document.getElementById('portal-funnel-val-4').innerText = Math.round(raw.conversions).toLocaleString('pt-BR');
+    document.getElementById('portal-funnel-val-4').innerText = Math.round(built.finalFunnelValue).toLocaleString('pt-BR');
 
     document.getElementById('portal-funnel-pct-1').innerText = '100%';
     document.getElementById('portal-funnel-pct-2').innerText = raw.impressions > 0 ? `${((raw.clicks / raw.impressions) * 100).toFixed(0)}%` : '0%';
     document.getElementById('portal-funnel-pct-3').innerText = raw.clicks > 0 ? `${((raw.pageViews / raw.clicks) * 100).toFixed(0)}%` : '0%';
-    document.getElementById('portal-funnel-pct-final').innerText = `${conversaoPct.toFixed(1)}% final`;
+    document.getElementById('portal-funnel-pct-final').innerText = `${built.finalFunnelPct.toFixed(1)}% final`;
   } else {
     funnelSection.style.display = 'none';
   }
+
+  renderPortalCommercialMetrics(built);
 
   renderPortalUpdates(rows.length, (leadsRows || []).length);
   renderPortalSourceLoss(built.leadsSource, built.lossReasons);
@@ -300,10 +308,112 @@ async function loadClientDashboardData() {
   renderPortalAdsSection(built);
 }
 
+// Mesma lógica de resolveCommercialMetrics/COMMERCIAL_METRIC_LABELS do
+// script.js — duplicada aqui de propósito (portal pensado pra virar deploy
+// separado no futuro). Métricas comerciais que podem ser "assumidas" por um
+// campo personalizado mapeado — nunca métricas de mídia (investimento/
+// impressões/cliques/page views), que são sempre de campaign_metrics.
+const COMMERCIAL_METRIC_LABELS_PORTAL = {
+  sales: 'Vendas',
+  revenue: 'Receita',
+  proposals: 'Propostas',
+  appointments: 'Agendamentos',
+  service: 'Atendimentos',
+  cancellations: 'Cancelamentos',
+  qualified: 'Leads qualificados'
+};
+
+function resolveCommercialMetricsPortal(customFields, customFieldValues) {
+  const resolved = {};
+  const customMetrics = [];
+
+  const valuesByField = {};
+  (customFieldValues || []).forEach(v => {
+    if (!valuesByField[v.field_id]) valuesByField[v.field_id] = [];
+    valuesByField[v.field_id].push(v);
+  });
+
+  (customFields || []).forEach(field => {
+    if (!field.active || !field.metric_mapping || field.metric_mapping === 'none') return;
+    const values = valuesByField[field.id] || [];
+    const sum = values.reduce((s, v) => s + (Number(v.value_number) || 0), 0);
+
+    if (field.metric_mapping === 'custom_metric') {
+      customMetrics.push({ name: field.name, value: sum, unit: field.unit || '' });
+      return;
+    }
+
+    if (!resolved[field.metric_mapping]) resolved[field.metric_mapping] = { value: 0, fieldNames: [] };
+    resolved[field.metric_mapping].value += sum;
+    resolved[field.metric_mapping].fieldNames.push(field.name);
+  });
+
+  return { resolved, customMetrics };
+}
+
+// Preenche a seção "Métricas comerciais" do portal — mesmo comportamento da
+// versão do Dashboard Filho (script.js): só aparece quando há pelo menos um
+// campo mapeado com valor, e cada card deixa a origem explícita.
+function renderPortalCommercialMetrics(data) {
+  const section = document.getElementById('portal-commercial-section');
+  const metricsGrid = document.getElementById('portal-commercial-metrics-grid');
+  const customGrid = document.getElementById('portal-custom-metrics-grid');
+  if (!section || !metricsGrid || !customGrid) return;
+
+  const commercial = data.commercial || {};
+  const customMetrics = data.customMetrics || [];
+  const stats = data.commercialStats || {};
+  const hasCommercial = Object.keys(commercial).length > 0;
+  const hasCustom = customMetrics.length > 0;
+
+  const receitaBadge = document.getElementById('portal-receita-source-badge');
+  if (receitaBadge) receitaBadge.style.display = data.revenueSource === 'manual' ? 'block' : 'none';
+  const vendasBadge = document.getElementById('portal-vendas-source-badge');
+  if (vendasBadge) vendasBadge.style.display = (data.salesResolved !== null && data.salesResolved !== undefined) ? 'block' : 'none';
+
+  if (!hasCommercial && !hasCustom) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  const cardHtml = (title, value, extra) => `
+    <div class="metric-card">
+      <span class="card-title">${title}</span>
+      <div class="card-value">${value}</div>
+      <span class="card-source-badge" style="font-size:9px; color:var(--text-secondary); margin-top:2px; display:block;">${extra || 'Fonte: Informado pelo cliente'}</span>
+    </div>
+  `;
+
+  let html = '';
+  Object.keys(COMMERCIAL_METRIC_LABELS_PORTAL).forEach(type => {
+    if (!commercial[type]) return;
+    const label = COMMERCIAL_METRIC_LABELS_PORTAL[type];
+    const value = type === 'revenue' ? formatCurrencyPortal(commercial[type].value) : formatNumberPortal(commercial[type].value);
+    html += cardHtml(label, value);
+  });
+
+  if (stats.custoPorVenda !== null && stats.custoPorVenda !== undefined) {
+    html += cardHtml('Custo por venda', formatCurrencyPortal(stats.custoPorVenda), 'Investimento ÷ Vendas informadas');
+  }
+  if (stats.taxaLeadVenda !== null && stats.taxaLeadVenda !== undefined) {
+    html += cardHtml('Taxa lead → venda', `${stats.taxaLeadVenda.toFixed(1)}%`, 'Vendas informadas ÷ Leads');
+  }
+  if (stats.ticketMedio !== null && stats.ticketMedio !== undefined) {
+    html += cardHtml('Ticket médio', formatCurrencyPortal(stats.ticketMedio), 'Receita informada ÷ Vendas informadas');
+  }
+  if (stats.roas !== null && stats.roas !== undefined) {
+    html += cardHtml('ROAS', `${stats.roas.toFixed(1)}x`, 'Receita informada ÷ Investimento');
+  }
+  metricsGrid.innerHTML = html;
+
+  customGrid.innerHTML = customMetrics.map(m => cardHtml(m.name, `${formatNumberPortal(m.value)}${m.unit ? ' ' + m.unit : ''}`)).join('');
+}
+
 // Mesmo cálculo de buildClientDetailedDataFromReal (script.js) — duplicado
 // aqui de propósito, já que este portal é pensado pra virar um deploy
 // separado no futuro, sem depender do script.js da agência.
-function buildPortalClientData(campaigns, leadsRows) {
+function buildPortalClientData(campaigns, leadsRows, customFields, customFieldValues) {
   let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
   const byPlatform = {};
   const byDate = {};
@@ -329,10 +439,32 @@ function buildPortalClientData(campaigns, leadsRows) {
     byDate[c.date].convs += Number(c.conversions) || 0;
   });
 
+  // Métricas comerciais mapeadas por campo personalizado: quando existir
+  // campo ativo mapeado, o valor informado pelo cliente vira a fonte
+  // OFICIAL (prioridade sobre dado de mídia) — vendas/receita/propostas/
+  // atendimentos/cancelamentos/qualificados normalmente não vêm de mídia
+  // paga, então dado manual mapeado tem prioridade quando existir.
+  const { resolved: commercial, customMetrics } = resolveCommercialMetricsPortal(customFields, customFieldValues);
+  const revenueSource = commercial.revenue ? 'manual' : 'media';
+  if (commercial.revenue) totalRevenue = commercial.revenue.value;
+  const salesResolved = commercial.sales ? commercial.sales.value : null;
+
   const conversaoPct = totalClicks > 0 ? (totalConvs / totalClicks) * 100 : 0;
   const cpl = totalLeads > 0 ? totalInvest / totalLeads : 0;
   const cpa = totalConvs > 0 ? totalInvest / totalConvs : 0;
   const roi = totalInvest > 0 ? ((totalRevenue - totalInvest) / totalInvest) * 100 : 0;
+
+  // O último estágio do funil é rotulado "Vendas" na tela — quando existe
+  // venda real mapeada, mostra ela (e a % final bate com ela); sem
+  // mapeamento, continua caindo no proxy de conversões de mídia.
+  const finalFunnelValue = salesResolved !== null ? salesResolved : totalConvs;
+  const finalFunnelPct = totalClicks > 0 ? (finalFunnelValue / totalClicks) * 100 : 0;
+
+  const custoPorVenda = salesResolved > 0 ? totalInvest / salesResolved : null;
+  const taxaLeadVenda = salesResolved !== null && totalLeads > 0 ? (salesResolved / totalLeads) * 100 : null;
+  const taxaCliqueVenda = salesResolved !== null && totalClicks > 0 ? (salesResolved / totalClicks) * 100 : null;
+  const ticketMedio = salesResolved > 0 && commercial.revenue ? commercial.revenue.value / salesResolved : null;
+  const roas = commercial.revenue && totalInvest > 0 ? commercial.revenue.value / totalInvest : null;
 
   const platformList = Object.keys(byPlatform);
   const sourceBasis = platformList.reduce((s, p) => s + (byPlatform[p].leads || byPlatform[p].clicks), 0) || 1;
@@ -412,9 +544,13 @@ function buildPortalClientData(campaigns, leadsRows) {
   return {
     raw: {
       invest: totalInvest, revenue: totalRevenue, leads: totalLeads,
-      impressions: totalImpress, clicks: totalClicks, pageViews: totalPageViews, conversions: totalConvs
+      impressions: totalImpress, clicks: totalClicks, pageViews: totalPageViews, conversions: totalConvs,
+      sales: salesResolved
     },
     conversaoPct, cpl, cpa, roi,
+    finalFunnelValue, finalFunnelPct,
+    commercial, customMetrics, revenueSource, salesResolved,
+    commercialStats: { custoPorVenda, taxaLeadVenda, taxaCliqueVenda, ticketMedio, roas },
     leadsSource, lossReasons, evolution,
     chartData: { dates: chartDates, investimento: dateKeys.map(d => byDate[d].invest), conversoes: dateKeys.map(d => byDate[d].convs) },
     campaigns: campaignsList

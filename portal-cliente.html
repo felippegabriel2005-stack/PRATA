@@ -115,6 +115,7 @@
         <div class="metric-card">
           <span class="card-title">Receita</span>
           <div class="card-value highlight-green" id="portal-num-receita">—</div>
+          <span class="card-source-badge" id="portal-receita-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Fonte: Informado pelo cliente</span>
         </div>
         <div class="metric-card">
           <span class="card-title">Conversão</span>
@@ -162,6 +163,7 @@
             <div class="funnel-step">
               <span class="funnel-step-label">Vendas</span>
               <span class="funnel-step-value" id="portal-funnel-val-4">—</span>
+              <span class="card-source-badge" id="portal-vendas-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Fonte: Informado pelo cliente</span>
             </div>
           </div>
 
@@ -184,6 +186,14 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- Métricas Comerciais: só aparece quando há campo personalizado
+           mapeado (vendas/receita/etc.) com valor informado. -->
+      <section class="table-card" id="portal-commercial-section" style="margin-bottom: 20px; display: none;">
+        <h2 class="section-heading">Métricas comerciais <span style="font-size: 10px; font-weight: 400; color: var(--text-secondary);">(informadas por você)</span></h2>
+        <div class="metrics-row-five" id="portal-commercial-metrics-grid"></div>
+        <div class="metrics-row-five" id="portal-custom-metrics-grid" style="margin-top: 12px;"></div>
       </section>
 
       <!-- Atualizações de dados -->
