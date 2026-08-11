@@ -415,7 +415,7 @@ function describeSourceLabelPortal(bySource) {
   const hasPortal = bySource.portal > 0;
   if (hasImport && hasPortal) return { key: 'mixed', text: 'Fonte: importação + portal do cliente' };
   if (hasPortal) return { key: 'portal', text: 'Fonte: informado pelo cliente' };
-  if (hasImport) return { key: 'import', text: 'Fonte: importação (histórico)' };
+  if (hasImport) return { key: 'import', text: 'Fonte: importação' };
   return { key: 'none', text: '' };
 }
 

@@ -301,7 +301,7 @@ function describeSourceLabel(bySource) {
   const hasPortal = bySource.portal > 0;
   if (hasImport && hasPortal) return { key: 'mixed', text: 'Fonte: importação + portal do cliente' };
   if (hasPortal) return { key: 'portal', text: 'Fonte: informado pelo cliente' };
-  if (hasImport) return { key: 'import', text: 'Fonte: importação (histórico)' };
+  if (hasImport) return { key: 'import', text: 'Fonte: importação' };
   return { key: 'none', text: '' };
 }
 
@@ -665,7 +665,8 @@ async function refreshClientDetailedDataIfReal(clientName) {
   built.targetsRowsAll = targetsRows || [];
   const allDates = [
     ...(campaigns || []).map(c => c.date),
-    ...(customFieldValues || []).map(v => v.period_date)
+    ...(customFieldValues || []).map(v => v.period_date),
+    ...(leadsRows || []).map(l => l.date)
   ].filter(Boolean).map(d => new Date(d + 'T00:00:00')).filter(d => !isNaN(d));
   built.earliestDate = allDates.length ? new Date(Math.min(...allDates)) : null;
   built.latestDate = allDates.length ? new Date(Math.max(...allDates)) : null;
