@@ -2447,6 +2447,14 @@ async function selectAnalysis(clientName, analysisName, analysisId) {
     updateConvCampaignsCountText();
     updateConversaoMetrics();
     renderCalendarDaysGrid('conv');
+
+    // Nova análise/cliente aberto: limpa comparação de mês ativa (era de
+    // outro contexto) e força recarregar a série mensal na próxima vez que
+    // o usuário abrir "Comparar mês" aqui.
+    conversaoComparisonState = null;
+    monthlyCampaignSeriesCacheKey = null;
+    comparisonSortState = { key: null, dir: 1 };
+    renderMonthComparison();
   } else {
     // Show standard child view
     document.getElementById('view-dashboard-pai').style.display = 'none';
@@ -2496,7 +2504,13 @@ function togglePeriodDropdown(prefix, event) {
   document.querySelectorAll('.period-dropdown-box').forEach(d => {
     if (d.id !== `${prefix}-period-dropdown`) d.style.display = 'none';
   });
-  
+  if (prefix === 'conv') {
+    const compareDropdown = document.getElementById('conv-compare-dropdown');
+    if (compareDropdown) compareDropdown.style.display = 'none';
+    const campaignsDropdown = document.getElementById('conv-campaigns-dropdown');
+    if (campaignsDropdown) campaignsDropdown.style.display = 'none';
+  }
+
   dropdown.style.display = isHidden ? 'flex' : 'none';
   
   if (isHidden) {
@@ -2969,17 +2983,27 @@ function toggleConvCampaignsDropdown(event) {
   const dropdown = document.getElementById('conv-campaigns-dropdown');
   if (!dropdown) return;
   const isHidden = dropdown.style.display === 'none';
-  
+
   // Close period dropdown if open
   const periodDropdown = document.getElementById('conv-period-dropdown');
   if (periodDropdown) periodDropdown.style.display = 'none';
-  
+  const compareDropdown = document.getElementById('conv-compare-dropdown');
+  if (compareDropdown) compareDropdown.style.display = 'none';
+
   dropdown.style.display = isHidden ? 'flex' : 'none';
 }
 
 document.addEventListener('click', function(event) {
   const dropdown = document.getElementById('conv-campaigns-dropdown');
   const btn = document.getElementById('conv-filter-campaigns-btn');
+  if (dropdown && dropdown.style.display !== 'none' && !dropdown.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {
+    dropdown.style.display = 'none';
+  }
+});
+
+document.addEventListener('click', function(event) {
+  const dropdown = document.getElementById('conv-compare-dropdown');
+  const btn = document.getElementById('conv-compare-btn');
   if (dropdown && dropdown.style.display !== 'none' && !dropdown.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {
     dropdown.style.display = 'none';
   }
@@ -4430,6 +4454,418 @@ function deleteConversaoRow(rowIndex) {
   showToast('Linha removida.');
 }
 
+// ==========================================================================
+// COMPARAÇÃO MÊS A MÊS (dentro de cada análise do Dashboard Filho)
+// ==========================================================================
+// loadConversaoCampaignsForClient já soma tudo num total único por campanha
+// (sem manter a data de cada linha), então não dá pra separar por mês a
+// partir de conversaoCampaigns — por isso busca campaign_metrics de novo
+// aqui, com o mesmo filtro de objetivo/análise, mas agrupando por mês.
+let monthlyCampaignSeries = {}; // { 'YYYY-MM': [{id,name,platform,invest,impress,clicks,views,convs,sales}] }
+let monthlyCampaignSeriesCacheKey = null;
+let conversaoComparisonState = null; // { main: 'YYYY-MM', compare: 'YYYY-MM' } ou null quando inativo
+let comparisonSortState = { key: null, dir: 1 };
+let campaignsSortState = { key: null, dir: 1 };
+
+const MONTH_NAMES_PT_FULL = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+function formatMonthLabel(monthKey) {
+  if (!monthKey) return '—';
+  const [y, m] = monthKey.split('-').map(Number);
+  return `${MONTH_NAMES_PT_FULL[m - 1]}/${y}`;
+}
+
+function previousMonthKey(monthKey) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const prevM = m === 1 ? 12 : m - 1;
+  const prevY = m === 1 ? y - 1 : y;
+  return `${prevY}-${String(prevM).padStart(2, '0')}`;
+}
+
+async function loadMonthlyComparisonSeries(clientName, analysisName) {
+  const slug = clientSlugFromName(clientName) || slugify(clientName);
+  const cacheKey = `${slug}|${analysisName}`;
+  if (monthlyCampaignSeriesCacheKey === cacheKey) return;
+
+  const { data, error } = await supabaseClient.from('campaign_metrics').select('*').eq('client_slug', slug);
+  monthlyCampaignSeries = {};
+  monthlyCampaignSeriesCacheKey = cacheKey;
+  if (error || !data) return;
+
+  let rows = data;
+  const known = matchKnownMatrixTemplate(analysisName);
+  if (known && analysisName !== 'Conversão') {
+    const filtered = rows.filter(r => matchKnownMatrixTemplate(r.objective) === known);
+    if (filtered.length > 0) rows = filtered;
+  }
+
+  rows.forEach(r => {
+    if (!r.date) return;
+    const month = r.date.slice(0, 7);
+    if (!monthlyCampaignSeries[month]) monthlyCampaignSeries[month] = [];
+    const key = `${r.campaign_name}||${r.platform}`;
+    let entry = monthlyCampaignSeries[month].find(e => e.id === key);
+    if (!entry) {
+      entry = { id: key, name: r.campaign_name, platform: r.platform, invest: 0, impress: 0, clicks: 0, views: 0, convs: 0, sales: 0 };
+      monthlyCampaignSeries[month].push(entry);
+    }
+    entry.invest += Number(r.invest) || 0;
+    entry.impress += Number(r.impressions) || 0;
+    entry.clicks += Number(r.clicks) || 0;
+    entry.views += Number(r.page_views) || 0;
+    entry.convs += Number(r.conversions) || 0;
+    entry.sales += Number(r.purchases) || 0;
+  });
+}
+
+function getAvailableMonthsDesc() {
+  return Object.keys(monthlyCampaignSeries).sort().reverse();
+}
+
+// Totais de um mês já filtrados por Plataforma e pelas campanhas marcadas no
+// filtro "Campanhas" (mesma seleção que already vale pra matriz da análise)
+// — é isso que garante que a comparação respeita os filtros ativos.
+function computeMonthTotals(month) {
+  const entries = monthlyCampaignSeries[month] || [];
+  const platformEl = document.getElementById('conv-filter-platform');
+  const platformFilter = platformEl ? platformEl.value : 'Todas';
+  const checkedIds = new Set(conversaoCampaigns.filter(c => c.checked).map(c => c.id));
+
+  let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalViews = 0, totalConvs = 0, totalSales = 0;
+  let hasAny = false;
+  entries.forEach(e => {
+    if (platformFilter !== 'Todas' && e.platform !== platformFilter) return;
+    if (!checkedIds.has(e.id)) return;
+    hasAny = true;
+    totalInvest += e.invest;
+    totalImpress += e.impress;
+    totalClicks += e.clicks;
+    totalViews += e.views;
+    totalConvs += e.convs;
+    totalSales += e.sales;
+  });
+
+  return {
+    hasData: hasAny,
+    invest: totalInvest, impress: totalImpress, clicks: totalClicks, views: totalViews, convs: totalConvs, sales: totalSales,
+    cpm: totalImpress > 0 ? (totalInvest / totalImpress) * 1000 : 0,
+    cpc: totalClicks > 0 ? totalInvest / totalClicks : 0,
+    cppv: totalViews > 0 ? totalInvest / totalViews : 0,
+    cpa: totalConvs > 0 ? totalInvest / totalConvs : 0,
+    ctr: totalImpress > 0 ? (totalClicks / totalImpress) * 100 : 0,
+    pvrate: totalClicks > 0 ? (totalViews / totalClicks) * 100 : 0,
+    convrate: totalViews > 0 ? (totalConvs / totalViews) * 100 : 0,
+    buyerate: totalConvs > 0 ? (totalSales / totalConvs) * 100 : 0
+  };
+}
+
+async function toggleCompareMonthDropdown(event) {
+  if (event) event.stopPropagation();
+  const dropdown = document.getElementById('conv-compare-dropdown');
+  if (!dropdown) return;
+
+  const willOpen = dropdown.style.display === 'none' || !dropdown.style.display;
+
+  const periodDropdown = document.getElementById('conv-period-dropdown');
+  if (periodDropdown) periodDropdown.style.display = 'none';
+  const campaignsDropdown = document.getElementById('conv-campaigns-dropdown');
+  if (campaignsDropdown) campaignsDropdown.style.display = 'none';
+
+  if (!willOpen) {
+    dropdown.style.display = 'none';
+    return;
+  }
+
+  dropdown.style.display = 'flex';
+  document.getElementById('conv-compare-loading').style.display = 'block';
+  document.getElementById('conv-compare-fields').style.display = 'none';
+
+  await loadMonthlyComparisonSeries(currentClient, currentAnalysis);
+  populateCompareMonthSelects();
+
+  document.getElementById('conv-compare-loading').style.display = 'none';
+  document.getElementById('conv-compare-fields').style.display = 'flex';
+}
+
+function populateCompareMonthSelects() {
+  const months = getAvailableMonthsDesc();
+  const mainSelect = document.getElementById('conv-compare-main-month');
+  const withSelect = document.getElementById('conv-compare-with-month');
+  const hint = document.getElementById('conv-compare-empty-hint');
+
+  if (!months.length) {
+    mainSelect.innerHTML = '<option value="">Sem dados</option>';
+    withSelect.innerHTML = '<option value="">Sem dados</option>';
+    hint.style.display = 'block';
+    hint.innerText = 'Nenhum mês com dados disponível pra essa análise ainda.';
+    return;
+  }
+  hint.style.display = 'none';
+
+  const optionsHtml = months.map(m => `<option value="${m}">${formatMonthLabel(m)}</option>`).join('');
+  mainSelect.innerHTML = optionsHtml;
+  withSelect.innerHTML = optionsHtml;
+
+  // Padrão: mês mais recente com dados (não o mês atual do calendário) vs
+  // o mês anterior a ele — mesmo que esse anterior não tenha dados ainda
+  // (o estado vazio avisa isso ao aplicar).
+  const defaultMain = (conversaoComparisonState && months.includes(conversaoComparisonState.main)) ? conversaoComparisonState.main : months[0];
+  const defaultCompare = (conversaoComparisonState && conversaoComparisonState.compare) || previousMonthKey(defaultMain);
+
+  mainSelect.value = defaultMain;
+  if ([...withSelect.options].some(o => o.value === defaultCompare)) {
+    withSelect.value = defaultCompare;
+  } else {
+    const opt = document.createElement('option');
+    opt.value = defaultCompare;
+    opt.innerText = `${formatMonthLabel(defaultCompare)} (sem dados)`;
+    withSelect.appendChild(opt);
+    withSelect.value = defaultCompare;
+  }
+}
+
+function applyMonthComparison(event) {
+  if (event) event.stopPropagation();
+  const main = document.getElementById('conv-compare-main-month').value;
+  const compare = document.getElementById('conv-compare-with-month').value;
+  if (!main || !compare) return;
+
+  conversaoComparisonState = { main, compare };
+  comparisonSortState = { key: null, dir: 1 };
+  document.getElementById('conv-compare-dropdown').style.display = 'none';
+  renderMonthComparison();
+}
+
+function clearMonthComparison() {
+  conversaoComparisonState = null;
+  const dropdown = document.getElementById('conv-compare-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+  renderMonthComparison();
+}
+
+function formatPercentPt(value, decimals) {
+  return `${value.toLocaleString('pt-BR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+}
+
+function formatMetricValueByFormat(value, format) {
+  if (format === 'Moeda') return formatCurrency(value);
+  if (format === 'Percentual') return formatPercentPt(value, 2);
+  return formatNumber(value);
+}
+
+function formatDiffByFormat(diff, format) {
+  const sign = diff > 0 ? '+' : (diff < 0 ? '-' : '');
+  const abs = Math.abs(diff);
+  if (format === 'Moeda') return `${sign}${formatCurrency(abs)}`;
+  if (format === 'Percentual') return `${sign}${abs.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} p.p.`;
+  return `${sign}${formatNumber(abs)}`;
+}
+
+// Diferença absoluta, variação % e status (melhorou/piorou/estável) de uma
+// métrica entre os dois meses — a regra "maior/menor é melhor" vem direto
+// do template da análise (metric.rule), a mesma que já define os badges de
+// meta batida/não batida na matriz principal.
+function computeComparisonRow(metric, mainTotals, compareTotals) {
+  const mainVal = mainTotals[metric.key];
+  const compVal = compareTotals[metric.key];
+  const diff = mainVal - compVal;
+
+  let variation = null;
+  let varLabel;
+  if (compVal === 0) {
+    if (mainVal === 0) { variation = 0; varLabel = 'sem variação'; }
+    else { varLabel = 'novo dado'; }
+  } else {
+    variation = (diff / compVal) * 100;
+  }
+  if (variation !== null && varLabel === undefined) {
+    varLabel = `${variation >= 0 ? '+' : ''}${variation.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+  }
+
+  const isBetterMore = metric.rule !== 'Menor é melhor';
+  let status;
+  if (variation === null) {
+    status = mainVal > 0 ? 'novo' : 'sem-dado';
+  } else {
+    const roundedVar = Math.round(variation * 10) / 10;
+    if (Math.abs(roundedVar) < 0.1) {
+      status = 'estavel';
+    } else {
+      const increased = diff > 0;
+      status = (isBetterMore ? increased : !increased) ? 'melhorou' : 'piorou';
+    }
+  }
+
+  return { metric, mainVal, compVal, diff, variation, varLabel, status, isBetterMore };
+}
+
+const COMPARISON_STATUS_LABELS = { melhorou: '↑ Melhorou', piorou: '↓ Piorou', estavel: '→ Estável', novo: 'Novo dado', 'sem-dado': '—' };
+const COMPARISON_STATUS_COLORS = { melhorou: 'healthy', piorou: 'critical', estavel: '', novo: 'attention', 'sem-dado': '' };
+
+function sortComparisonRows(rows, key, dir) {
+  const sorted = [...rows];
+  sorted.sort((a, b) => {
+    if (key === 'name') return dir * a.metric.name.localeCompare(b.metric.name);
+    let av, bv;
+    if (key === 'mainVal') { av = a.mainVal; bv = b.mainVal; }
+    else if (key === 'compVal') { av = a.compVal; bv = b.compVal; }
+    else if (key === 'diff') { av = a.diff; bv = b.diff; }
+    else { av = a.variation === null ? -Infinity : a.variation; bv = b.variation === null ? -Infinity : b.variation; }
+    return dir * (av - bv);
+  });
+  return sorted;
+}
+
+function sortComparisonTable(key) {
+  if (comparisonSortState.key === key) {
+    comparisonSortState.dir *= -1;
+  } else {
+    comparisonSortState.key = key;
+    comparisonSortState.dir = key === 'name' ? 1 : -1;
+  }
+  renderMonthComparison();
+}
+
+function sortCampaignsTable(key) {
+  if (campaignsSortState.key === key) {
+    campaignsSortState.dir *= -1;
+  } else {
+    campaignsSortState.key = key;
+    campaignsSortState.dir = (key === 'name' || key === 'platform') ? 1 : -1;
+  }
+  clientCampaigns.sort((a, b) => {
+    const av = a[key], bv = b[key];
+    if (typeof av === 'string') return campaignsSortState.dir * av.localeCompare(bv);
+    return campaignsSortState.dir * ((Number(av) || 0) - (Number(bv) || 0));
+  });
+  renderCampaignsTable();
+  Object.keys({ name: 1, platform: 1, invest: 1, impress: 1, clicks: 1, ctr: 1, cpc: 1, convs: 1, cpa: 1 }).forEach(k => {
+    const el = document.getElementById(`camp-sort-icon-${k}`);
+    if (el) el.innerText = k === campaignsSortState.key ? (campaignsSortState.dir === 1 ? '↑' : '↓') : '';
+  });
+}
+
+// Cards de resumo: maior melhora, ponto de atenção, investimento, resultado
+// (conversões/vendas/leads conforme a análise) e eficiência (CPA/CAC/CPL).
+function renderComparisonSummaryCards(rows, hasCompareData) {
+  const cardsEl = document.getElementById('conv-comparison-cards');
+  if (!cardsEl) return;
+  if (!hasCompareData) { cardsEl.innerHTML = ''; return; }
+
+  const rankByImprovement = (r) => r.isBetterMore ? r.variation : -r.variation;
+  const improved = rows.filter(r => r.status === 'melhorou');
+  const worsened = rows.filter(r => r.status === 'piorou');
+
+  const biggestImprovement = improved.length ? improved.reduce((a, b) => rankByImprovement(b) > rankByImprovement(a) ? b : a) : null;
+  const biggestDrop = worsened.length ? worsened.reduce((a, b) => rankByImprovement(b) < rankByImprovement(a) ? b : a) : null;
+
+  const investRow = rows.find(r => r.metric.key === 'invest');
+  const convsRow = rows.find(r => r.metric.key === 'convs');
+  const cpaRow = rows.find(r => r.metric.key === 'cpa');
+
+  const colorFor = (status) => status === 'melhorou' ? 'var(--color-green)' : (status === 'piorou' ? 'var(--color-red)' : 'var(--text-secondary)');
+
+  const cards = [];
+  if (biggestImprovement) cards.push({ label: 'Maior melhora', value: biggestImprovement.metric.name, sub: biggestImprovement.varLabel, color: 'var(--color-green)' });
+  if (biggestDrop) cards.push({ label: 'Ponto de atenção', value: biggestDrop.metric.name, sub: biggestDrop.varLabel, color: 'var(--color-red)' });
+  if (investRow) cards.push({ label: 'Investimento', value: formatDiffByFormat(investRow.diff, 'Moeda'), sub: investRow.varLabel, color: colorFor(investRow.status) });
+  if (convsRow) cards.push({ label: `Resultado (${convsRow.metric.name})`, value: formatDiffByFormat(convsRow.diff, 'Número'), sub: convsRow.varLabel, color: colorFor(convsRow.status) });
+  if (cpaRow) cards.push({ label: `Eficiência (${cpaRow.metric.name})`, value: cpaRow.varLabel || '—', sub: COMPARISON_STATUS_LABELS[cpaRow.status], color: colorFor(cpaRow.status) });
+
+  cardsEl.innerHTML = cards.slice(0, 5).map(c => `
+    <div style="background: var(--bg-card); padding: 14px 16px;">
+      <div style="font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px;">${escapeHtml(c.label)}</div>
+      <div style="font-size: 15px; font-weight: 700; color: var(--text-primary);">${escapeHtml(String(c.value))}</div>
+      ${c.sub ? `<div style="font-size: 10px; margin-top: 2px; color: ${c.color};">${escapeHtml(c.sub)}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+function renderMonthComparison() {
+  const section = document.getElementById('conv-comparison-section');
+  const badge = document.getElementById('conv-comparison-badge');
+  if (!section || !badge) return;
+
+  if (!conversaoComparisonState) {
+    section.style.display = 'none';
+    badge.style.display = 'none';
+    return;
+  }
+
+  const { main, compare } = conversaoComparisonState;
+  const mainLabel = formatMonthLabel(main);
+  const compareLabel = formatMonthLabel(compare);
+
+  badge.style.display = 'flex';
+  document.getElementById('conv-comparison-badge-text').innerText = `Comparando: ${mainLabel} vs ${compareLabel}`;
+  document.getElementById('conv-comparison-subtitle').innerText = `${mainLabel} vs ${compareLabel}`;
+
+  const mainTotals = computeMonthTotals(main);
+  const compareTotals = computeMonthTotals(compare);
+
+  const cardsEl = document.getElementById('conv-comparison-cards');
+  const theadRow = document.getElementById('conv-comparison-thead-row');
+  const tbody = document.getElementById('conv-comparison-tbody');
+
+  section.style.display = 'block';
+
+  if (!mainTotals.hasData && !compareTotals.hasData) {
+    cardsEl.innerHTML = '';
+    theadRow.innerHTML = '';
+    tbody.innerHTML = `<tr><td style="text-align:center; padding:24px; color:var(--text-muted); font-size:12px;">Não há dados suficientes para comparar esses meses (considerando os filtros de plataforma/campanhas atuais).</td></tr>`;
+    return;
+  }
+
+  theadRow.innerHTML = `
+    <th style="cursor:pointer; user-select:none;" onclick="sortComparisonTable('name')">Métrica <span class="sort-icon" id="comp-sort-icon-name"></span></th>
+    <th style="cursor:pointer; user-select:none;" onclick="sortComparisonTable('mainVal')">${escapeHtml(mainLabel)} <span class="sort-icon" id="comp-sort-icon-mainVal"></span></th>
+    <th style="cursor:pointer; user-select:none;" onclick="sortComparisonTable('compVal')">${escapeHtml(compareLabel)} <span class="sort-icon" id="comp-sort-icon-compVal"></span></th>
+    <th style="cursor:pointer; user-select:none;" onclick="sortComparisonTable('diff')">Diferença <span class="sort-icon" id="comp-sort-icon-diff"></span></th>
+    <th style="cursor:pointer; user-select:none;" onclick="sortComparisonTable('variation')">Variação <span class="sort-icon" id="comp-sort-icon-variation"></span></th>
+  `;
+  if (comparisonSortState.key) {
+    const iconEl = document.getElementById(`comp-sort-icon-${comparisonSortState.key}`);
+    if (iconEl) iconEl.innerText = comparisonSortState.dir === 1 ? '↑' : '↓';
+  }
+
+  const metricRows = (conversaoRows || []).flatMap(r => r.metrics).filter(m => m.key && mainTotals.hasOwnProperty(m.key));
+  let rows = metricRows.map(m => computeComparisonRow(m, mainTotals, compareTotals));
+  if (comparisonSortState.key) rows = sortComparisonRows(rows, comparisonSortState.key, comparisonSortState.dir);
+
+  tbody.innerHTML = '';
+  if (!compareTotals.hasData) {
+    const warnTr = document.createElement('tr');
+    warnTr.innerHTML = `<td colspan="5" style="padding:10px 12px; font-size:11px; color: var(--color-orange); background: rgba(245,158,11,0.06);">${escapeHtml(compareLabel)} não possui dados para os filtros selecionados — mostrando só ${escapeHtml(mainLabel)}, sem base de comparação anterior.</td>`;
+    tbody.appendChild(warnTr);
+  } else if (!mainTotals.hasData) {
+    const warnTr = document.createElement('tr');
+    warnTr.innerHTML = `<td colspan="5" style="padding:10px 12px; font-size:11px; color: var(--color-orange); background: rgba(245,158,11,0.06);">${escapeHtml(mainLabel)} não possui dados para os filtros selecionados.</td>`;
+    tbody.appendChild(warnTr);
+  }
+
+  rows.forEach(row => {
+    const tr = document.createElement('tr');
+    const mainStr = formatMetricValueByFormat(row.mainVal, row.metric.format);
+    const compStr = compareTotals.hasData ? formatMetricValueByFormat(row.compVal, row.metric.format) : '—';
+    const diffStr = compareTotals.hasData ? formatDiffByFormat(row.diff, row.metric.format) : '—';
+    const varStr = compareTotals.hasData ? (row.varLabel || '—') : '—';
+    const badgeHtml = compareTotals.hasData
+      ? `<span class="table-badge ${COMPARISON_STATUS_COLORS[row.status] || ''}" style="font-size:9px;">${COMPARISON_STATUS_LABELS[row.status]}</span>`
+      : '';
+
+    tr.innerHTML = `
+      <td style="font-weight:500;">${escapeHtml(row.metric.name)}</td>
+      <td>${mainStr}</td>
+      <td>${compStr}</td>
+      <td>${diffStr}</td>
+      <td><div style="display:flex; align-items:center; gap:6px;">${escapeHtml(varStr)} ${badgeHtml}</div></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  renderComparisonSummaryCards(rows, compareTotals.hasData);
+}
+
 function updateConversaoMetrics() {
   let totalInvest = 0;
   let totalImpress = 0;
@@ -4487,6 +4923,12 @@ function updateConversaoMetrics() {
   };
 
   renderConversaoMatrix(dynamicValues);
+
+  // Se houver comparação de mês ativa, mantém ela em sincronia com
+  // qualquer mudança de filtro (plataforma/campanhas) que passou por aqui.
+  if (typeof conversaoComparisonState !== 'undefined' && conversaoComparisonState) {
+    renderMonthComparison();
+  }
 }
 
 // Abre o Dashboard Filho de um Cliente Específico

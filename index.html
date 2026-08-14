@@ -813,15 +813,15 @@
                 <thead>
                   <tr>
                     <th style="width: 40px; padding: 12px 10px;"><input type="checkbox" id="c-campaign-select-all" onchange="toggleSelectAllCampaigns(this.checked)"></th>
-                    <th>Campanha</th>
-                    <th>Plataforma</th>
-                    <th>Investimento</th>
-                    <th>Impressões</th>
-                    <th>Cliques</th>
-                    <th>CTR</th>
-                    <th>CPC</th>
-                    <th>Conv.</th>
-                    <th>CPA</th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('name')">Campanha <span class="sort-icon" id="camp-sort-icon-name"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('platform')">Plataforma <span class="sort-icon" id="camp-sort-icon-platform"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('invest')">Investimento <span class="sort-icon" id="camp-sort-icon-invest"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('impress')">Impressões <span class="sort-icon" id="camp-sort-icon-impress"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('clicks')">Cliques <span class="sort-icon" id="camp-sort-icon-clicks"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('ctr')">CTR <span class="sort-icon" id="camp-sort-icon-ctr"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('cpc')">CPC <span class="sort-icon" id="camp-sort-icon-cpc"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('convs')">Conv. <span class="sort-icon" id="camp-sort-icon-convs"></span></th>
+                    <th style="cursor: pointer; user-select: none;" onclick="sortCampaignsTable('cpa')">CPA <span class="sort-icon" id="camp-sort-icon-cpa"></span></th>
                   </tr>
                 </thead>
                 <tbody id="c-table-campaigns">
@@ -953,9 +953,46 @@
               <div style="display: flex; justify-content: flex-end; margin-top: 4px;">
                 <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 16px;" onclick="applyPeriodFilter('conv', event)">Aplicar</button>
               </div>
-              
+
             </div>
           </div>
+
+          <!-- Comparar mês -->
+          <div class="filter-item-wrapper" style="display: flex; align-items: center; gap: 8px; position: relative;">
+            <button id="conv-compare-btn" class="filter-select" style="font-size: 11px; height: 28px; padding: 0 12px; background-color: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); text-align: left; cursor: pointer; min-width: 120px; display: flex; align-items: center; justify-content: space-between; gap: 8px;" onclick="toggleCompareMonthDropdown(event)">
+              <span>📊 Comparar mês</span>
+              <span style="font-size: 8px; color: var(--text-muted);">▼</span>
+            </button>
+
+            <!-- Compare Month Dropdown Overlay -->
+            <div id="conv-compare-dropdown" style="display: none; position: absolute; top: 32px; right: 0; z-index: 100; width: 260px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 10px 25px rgba(0,0,0,0.5); padding: 14px; flex-direction: column; gap: 10px;">
+              <div id="conv-compare-loading" style="font-size: 11px; color: var(--text-muted); text-align: center; padding: 8px 0;">Carregando meses disponíveis...</div>
+              <div id="conv-compare-fields" style="display: none; flex-direction: column; gap: 10px;">
+                <div>
+                  <label style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Mês principal</label>
+                  <select id="conv-compare-main-month" class="filter-select" style="width: 100%; height: 30px; font-size: 11px; padding: 0 10px; background-color: var(--bg-app);"></select>
+                </div>
+                <div>
+                  <label style="font-size: 10px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Comparar com</label>
+                  <select id="conv-compare-with-month" class="filter-select" style="width: 100%; height: 30px; font-size: 11px; padding: 0 10px; background-color: var(--bg-app);"></select>
+                </div>
+                <div id="conv-compare-empty-hint" style="display: none; font-size: 10px; color: var(--color-orange);"></div>
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; gap: 8px;">
+                  <span style="font-size: 10px; color: var(--text-secondary); cursor: pointer;" onclick="clearMonthComparison(); toggleCompareMonthDropdown(event);">Limpar comparação</span>
+                  <div style="display: flex; gap: 6px;">
+                    <button class="filter-btn" style="height: 26px; font-size: 11px; padding: 0 12px;" onclick="toggleCompareMonthDropdown(event)">Cancelar</button>
+                    <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 14px;" onclick="applyMonthComparison(event)">Aplicar</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Badge de comparação ativa -->
+        <div id="conv-comparison-badge" style="display: none; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; background-color: rgba(139, 92, 246, 0.08); border: 1px solid var(--color-purple); border-radius: var(--border-radius-sm); margin-bottom: 16px; font-size: 11px;">
+          <span style="color: var(--text-primary); font-weight: 500;" id="conv-comparison-badge-text">Comparando: — vs —</span>
+          <span style="color: var(--text-secondary); cursor: pointer; text-decoration: underline;" onclick="clearMonthComparison()">Limpar comparação</span>
         </div>
 
         <!-- Header do Cliente -->
@@ -1002,6 +1039,31 @@
             <button style="background: transparent; border: none; font-family: var(--font-family-body); font-size: 11px; font-weight: 600; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; gap: 6px;" onclick="addNewConvRow(event)">
               <span>+</span> Adicionar linha de métricas
             </button>
+          </div>
+        </section>
+
+        <!-- Comparativo mês a mês (só aparece com comparação aplicada) -->
+        <section class="table-card" id="conv-comparison-section" style="display: none; padding: 0; overflow: hidden; border: 1px solid var(--border-color); border-radius: var(--border-radius-md); background-color: var(--bg-card); margin-bottom: 24px;">
+          <div style="padding: 16px 20px; border-bottom: 1px solid var(--divider-color);">
+            <h2 style="font-family: var(--font-family-title); font-size: 12px; font-weight: 700; letter-spacing: 1px; color: var(--text-primary); margin: 0 0 2px 0;">COMPARATIVO MÊS A MÊS</h2>
+            <span id="conv-comparison-subtitle" style="font-size: 11px; color: var(--text-secondary);">—</span>
+          </div>
+
+          <div id="conv-comparison-cards" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background-color: var(--divider-color);">
+            <!-- Cards gerados via JS -->
+          </div>
+
+          <div class="table-wrapper" style="max-height: 420px; overflow-y: auto;">
+            <table class="custom-table" id="conv-comparison-table">
+              <thead>
+                <tr id="conv-comparison-thead-row">
+                  <!-- Gerado via JS (cabeçalho depende dos meses escolhidos) -->
+                </tr>
+              </thead>
+              <tbody id="conv-comparison-tbody">
+                <!-- Gerado via JS -->
+              </tbody>
+            </table>
           </div>
         </section>
 

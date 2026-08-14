@@ -967,6 +967,16 @@ body.light .catalogo-metric-item:hover {
   letter-spacing: 0.5px;
 }
 
+.custom-table th[onclick]:hover {
+  color: var(--text-primary);
+}
+
+.sort-icon {
+  font-size: 9px;
+  color: var(--color-purple);
+  letter-spacing: 0;
+}
+
 .custom-table td {
   font-size: 12px;
   padding: 14px 16px;
