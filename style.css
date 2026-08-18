@@ -1946,6 +1946,48 @@ body.light .catalogo-metric-item:hover {
   font-size: 11px;
 }
 
+/* Evolução Comercial no Portal do Cliente — mesmo tratamento em cards do
+   Dashboard Filho (#c-evolution-list acima); sem isso caía no .evolution-item
+   genérico (linha inteira, sem borda), deixando o espaçamento solto. */
+#portal-evolution-list {
+  gap: 10px !important;
+}
+
+#portal-evolution-list .evolution-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  background-color: rgba(255, 255, 255, 0.005);
+  transition: var(--transition-fast);
+}
+
+#portal-evolution-list .evolution-item:hover {
+  border-color: var(--border-color-hover);
+  background-color: rgba(255, 255, 255, 0.015);
+}
+
+#portal-evolution-list .evolution-item .evolution-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+#portal-evolution-list .evolution-item .evolution-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+#portal-evolution-list .evolution-item .evolution-trend-indicator {
+  margin-left: 0;
+  font-size: 11px;
+}
+
 /* Performance Ads — Compact Campaign Table */
 #c-performance-ads-section .custom-table th {
   padding: 8px 10px;
