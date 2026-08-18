@@ -704,6 +704,17 @@
           </section>
         </div>
 
+        <!-- Motivos de Desqualificação (só aparece com campo mapeado + valores) -->
+        <section class="table-card" id="c-disqualification-section" style="display: none; margin-top: 16px;">
+          <h2 class="section-heading">Motivos de desqualificação de leads</h2>
+          <ul id="c-disqualification-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;">
+            <!-- JS: breakdown % quando o campo é picklist -->
+          </ul>
+          <div id="c-disqualification-freetext" style="display: none; margin-top: 8px; flex-direction: column; gap: 8px;">
+            <!-- JS: respostas recentes quando o campo é texto livre -->
+          </div>
+        </section>
+
         <!-- Separador -->
         <div class="section-separator">
           <div class="separator-diamond"></div>
@@ -1990,6 +2001,7 @@
             <option value="service">Atendimentos</option>
             <option value="cancellations">Cancelamentos</option>
             <option value="qualified">Leads qualificados</option>
+            <option value="disqualification_reason">Motivo de desqualificação de leads</option>
             <option value="custom_metric">Métrica personalizada</option>
           </select>
           <span style="font-size: 10px; color: var(--text-secondary); display: block; margin-top: 4px;">Quando mapeado, o valor preenchido pelo cliente vira a fonte oficial dessa métrica no Dashboard (em vez de dado de mídia), com a origem sempre identificada como "Informado pelo cliente".</span>

@@ -247,6 +247,7 @@ async function loadClientDashboardData() {
 
   renderPortalUpdates(rows.length, (leadsRows || []).length);
   renderPortalSourceLoss(built.leadsSource, built.lossReasons);
+  renderPortalDisqualificationReasons(built);
   renderPortalEvolution(built.evolution);
   renderPortalAdsSection(built);
 }
@@ -278,6 +279,7 @@ function resolveCommercialMetricsPortal(customFields, customFieldValues) {
 
   (customFields || []).forEach(field => {
     if (!field.active || !field.metric_mapping || field.metric_mapping === 'none') return;
+    if (field.metric_mapping === 'disqualification_reason') return;
     const values = valuesByField[field.id] || [];
     const sum = values.reduce((s, v) => s + (Number(v.value_number) || 0), 0);
 
@@ -292,6 +294,48 @@ function resolveCommercialMetricsPortal(customFields, customFieldValues) {
   });
 
   return { resolved, customMetrics };
+}
+
+// Igual a resolveDisqualificationReasons (script.js) — duplicada de propósito.
+function resolveDisqualificationReasonsPortal(customFields, customFieldValues) {
+  const valuesByField = {};
+  (customFieldValues || []).forEach(v => {
+    if (!valuesByField[v.field_id]) valuesByField[v.field_id] = [];
+    valuesByField[v.field_id].push(v);
+  });
+
+  const counts = {};
+  const freeTextEntries = [];
+
+  (customFields || []).forEach(field => {
+    if (!field.active || field.metric_mapping !== 'disqualification_reason') return;
+    const values = valuesByField[field.id] || [];
+    const isPicklist = field.field_type === 'single_select' || field.field_type === 'multi_select';
+
+    values.forEach(v => {
+      if (isPicklist) {
+        if (field.field_type === 'multi_select' && Array.isArray(v.value_options)) {
+          v.value_options.forEach(opt => { counts[opt] = (counts[opt] || 0) + 1; });
+        } else if (v.value_text) {
+          counts[v.value_text] = (counts[v.value_text] || 0) + 1;
+        }
+      } else if (v.value_text && v.value_text.trim()) {
+        freeTextEntries.push({ text: v.value_text.trim(), date: v.period_date, fieldName: field.name });
+      }
+    });
+  });
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const colors = ['#ef4444', '#f59e0b', '#8b5cf6', '#6b7280', '#4b5563'];
+  const reasons = Object.keys(counts).map((reason, i) => ({
+    name: reason,
+    pct: total > 0 ? Math.round((counts[reason] / total) * 100) : 0,
+    color: colors[i % colors.length]
+  })).sort((a, b) => b.pct - a.pct);
+
+  freeTextEntries.sort((a, b) => (a.date < b.date ? 1 : -1));
+
+  return { reasons, freeTextEntries: freeTextEntries.slice(0, 20) };
 }
 
 // Unificação Vendas/Receita (histórico importado em leads_sales + portal),
@@ -468,6 +512,7 @@ function buildPortalClientData(campaigns, leadsRows, customFields, customFieldVa
   // atendimentos/cancelamentos/qualificados normalmente não vêm de mídia
   // paga, então dado manual mapeado tem prioridade quando existir.
   const { resolved: commercial, customMetrics } = resolveCommercialMetricsPortal(customFields, customFieldValues);
+  const disqualification = resolveDisqualificationReasonsPortal(customFields, customFieldValues);
 
   // Vendas/Receita: unifica histórico importado (leads_sales) com o que o
   // próprio cliente preencheu no portal, dia a dia, sem duplicar.
@@ -586,6 +631,7 @@ function buildPortalClientData(campaigns, leadsRows, customFields, customFieldVa
     conversaoPct, cpl, cpa, roi,
     finalFunnelValue, finalFunnelPct,
     commercial, customMetrics, revenueSource, revenueSourceLabel, salesSourceLabel, salesResolved,
+    disqualificationReasons: disqualification.reasons, disqualificationFreeText: disqualification.freeTextEntries,
     commercialStats: { custoPorVenda, taxaLeadVenda, taxaCliqueVenda, ticketMedio, roas },
     leadsSource, lossReasons, evolution,
     chartData: { dates: chartDates, investimento: dateKeys.map(d => byDate[d].invest), conversoes: dateKeys.map(d => byDate[d].convs) },
@@ -657,6 +703,48 @@ function renderPortalSourceLoss(leadsSource, lossReasons) {
     });
   } else {
     lossSection.style.display = 'none';
+  }
+}
+
+// Igual a renderDisqualificationReasons (script.js) — duplicada de propósito.
+function renderPortalDisqualificationReasons(data) {
+  const section = document.getElementById('portal-disqualification-section');
+  const list = document.getElementById('portal-disqualification-list');
+  const freeTextEl = document.getElementById('portal-disqualification-freetext');
+  if (!section || !list || !freeTextEl) return;
+
+  const reasons = data.disqualificationReasons || [];
+  const freeText = data.disqualificationFreeText || [];
+
+  if (!reasons.length && !freeText.length) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  list.innerHTML = reasons.map(item => `
+    <li class="progress-item">
+      <div class="progress-header">
+        <span class="progress-name">${escapeHtml(item.name)}</span>
+        <span class="progress-value">${item.pct}%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" style="width: ${item.pct}%; background-color: ${item.color};"></div>
+      </div>
+    </li>
+  `).join('');
+
+  if (freeText.length) {
+    freeTextEl.style.display = 'flex';
+    freeTextEl.innerHTML = freeText.map(entry => `
+      <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 8px 10px; font-size: 11px;">
+        <span style="color: var(--text-primary);">${escapeHtml(entry.text)}</span>
+        <span style="color: var(--text-muted); font-size: 10px; margin-left: 6px;">${entry.date ? formatDateBR(new Date(entry.date + 'T00:00:00')) : ''}</span>
+      </div>
+    `).join('');
+  } else {
+    freeTextEl.style.display = 'none';
+    freeTextEl.innerHTML = '';
   }
 }
 
