@@ -78,6 +78,10 @@ function formatCurrencyThousands(val) {
 // de um valor fixo definido na importação/cadastro manual. Também devolve
 // os motivos em texto (reasons), pra IA conseguir explicar exatamente por
 // que aquele cliente está em atenção/crítico quando o usuário perguntar.
+// Cada motivo carrega sua própria severidade ({text, severity}), não só o
+// texto — é isso que permite o score de saúde (computeClientHealthScore)
+// converter "quantos e quão graves são os problemas" num número 0-100, em
+// vez de só um status geral healthy/attention/critical.
 function computeClientStatusFromData(raw, targetsRows) {
   const reasons = [];
   let severity = 0; // 0 = saudável, 1 = atenção, 2 = crítico
@@ -85,15 +89,15 @@ function computeClientStatusFromData(raw, targetsRows) {
   if (raw.invest > 0) {
     const roi = ((raw.revenue - raw.invest) / raw.invest) * 100;
     if (roi < 0) {
-      reasons.push(`ROI negativo (${Math.round(roi)}%): o investimento de ${formatCurrency(raw.invest)} ainda não voltou em receita.`);
+      reasons.push({ text: `ROI negativo (${Math.round(roi)}%): o investimento de ${formatCurrency(raw.invest)} ainda não voltou em receita.`, severity: 'critical' });
       severity = Math.max(severity, 2);
     } else if (roi < 50) {
-      reasons.push(`ROI baixo (${Math.round(roi)}%), abaixo do que se espera de uma campanha saudável.`);
+      reasons.push({ text: `ROI baixo (${Math.round(roi)}%), abaixo do que se espera de uma campanha saudável.`, severity: 'attention' });
       severity = Math.max(severity, 1);
     }
 
     if (raw.conversions === 0) {
-      reasons.push(`Investimento de ${formatCurrency(raw.invest)} sem nenhuma conversão registrada até agora.`);
+      reasons.push({ text: `Investimento de ${formatCurrency(raw.invest)} sem nenhuma conversão registrada até agora.`, severity: 'critical' });
       severity = Math.max(severity, 2);
     }
   }
@@ -3699,6 +3703,74 @@ async function saveMatrixStructure(clientSlug, analysisId, rows) {
   if (error) console.error('Erro ao salvar estrutura da análise', error);
 }
 
+// ==========================================================================
+// COMENTÁRIO DO ANALISTA (só na matriz de métricas das análises)
+// ==========================================================================
+// Guardado direto no metric.comment, dentro da MESMA estrutura JSON já
+// persistida por saveMatrixStructure — sem tabela nova.
+let activeMetricCommentTarget = null; // { rowIndex, metricIndex }
+
+function openMetricCommentPopover(event, rowIndex, metricIndex) {
+  event.stopPropagation();
+  activeMetricCommentTarget = { rowIndex, metricIndex };
+
+  const popover = document.getElementById('metric-comment-popover');
+  const input = document.getElementById('metric-comment-input');
+  const removeBtn = document.getElementById('metric-comment-remove');
+  if (!popover || !input || !removeBtn) return;
+
+  const metric = conversaoRows[rowIndex].metrics[metricIndex];
+  input.value = metric.comment || '';
+  removeBtn.style.display = metric.comment ? 'inline' : 'none';
+
+  const rect = event.currentTarget.getBoundingClientRect();
+  popover.style.display = 'block';
+  const popoverWidth = 260;
+  let left = rect.left + (rect.width / 2) - (popoverWidth / 2);
+  if (left < 8) left = 8;
+  if (left + popoverWidth > window.innerWidth - 8) left = window.innerWidth - popoverWidth - 8;
+  popover.style.top = `${rect.bottom + 6}px`;
+  popover.style.left = `${left}px`;
+
+  input.focus();
+}
+
+function closeMetricCommentPopover() {
+  const popover = document.getElementById('metric-comment-popover');
+  if (popover) popover.style.display = 'none';
+  activeMetricCommentTarget = null;
+}
+
+function saveMetricComment() {
+  if (!activeMetricCommentTarget) return;
+  const { rowIndex, metricIndex } = activeMetricCommentTarget;
+  const text = document.getElementById('metric-comment-input').value.trim();
+
+  if (text) conversaoRows[rowIndex].metrics[metricIndex].comment = text;
+  else delete conversaoRows[rowIndex].metrics[metricIndex].comment;
+
+  saveMatrixStructure(clientSlugFromName(currentClient), currentAnalysisId, conversaoRows);
+  closeMetricCommentPopover();
+  updateConversaoMetrics();
+}
+
+function removeMetricComment() {
+  if (!activeMetricCommentTarget) return;
+  const { rowIndex, metricIndex } = activeMetricCommentTarget;
+  delete conversaoRows[rowIndex].metrics[metricIndex].comment;
+
+  saveMatrixStructure(clientSlugFromName(currentClient), currentAnalysisId, conversaoRows);
+  closeMetricCommentPopover();
+  updateConversaoMetrics();
+}
+
+document.addEventListener('click', function(event) {
+  const popover = document.getElementById('metric-comment-popover');
+  if (popover && popover.style.display !== 'none' && !popover.contains(event.target) && !event.target.classList.contains('metric-comment-icon')) {
+    closeMetricCommentPopover();
+  }
+});
+
 // Fator determinístico que diferencia os números de cada aba (Conversão = 100% do
 // tráfego do cliente; as demais abas representam uma fatia plausível e estável dele).
 function getAnalysisFactor(analysisName) {
@@ -4707,6 +4779,19 @@ function renderConversaoMatrix(dynamicValues) {
           valDiv.style.color = 'var(--text-primary)';
         }
         cell.appendChild(metaSpan);
+
+        // Comentário do analista — só existe nesta tela (matriz de
+        // métricas das análises). Ícone discreto: opaco quando já tem
+        // comentário, apagado quando ainda não tem nenhum.
+        cell.style.position = 'relative';
+        const commentBtn = document.createElement('button');
+        commentBtn.type = 'button';
+        commentBtn.className = 'metric-comment-icon';
+        commentBtn.title = metric.comment ? 'Ver/editar comentário do analista' : 'Adicionar comentário do analista';
+        commentBtn.innerText = '💬';
+        commentBtn.style.cssText = `position:absolute; top:-6px; right:2px; background:none; border:none; cursor:pointer; font-size:11px; line-height:1; padding:2px; opacity:${metric.comment ? '1' : '0.3'};`;
+        commentBtn.onclick = (e) => openMetricCommentPopover(e, rowIndex, metricIndex);
+        cell.appendChild(commentBtn);
 
         cellsWrapper.appendChild(cell);
 

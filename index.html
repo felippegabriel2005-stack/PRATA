@@ -1099,6 +1099,20 @@
             <a href="#" style="font-size: 11px; color: var(--text-secondary); text-decoration: none;" onclick="event.preventDefault(); alert('Visualização detalhada das campanhas em desenvolvimento.');">Ver detalhes</a>
           </div>
         </section>
+
+        <!-- Comentário do analista: popover único, reposicionado via JS perto
+             do 💬 clicado — só existe nesta tela (matriz de métricas). -->
+        <div id="metric-comment-popover" style="display:none; position: fixed; z-index: 3000; width: 260px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 12px;">
+          <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">Comentário do analista</div>
+          <textarea id="metric-comment-input" rows="3" placeholder="Ex: CPA subiu porque aumentamos investimento em campanha de teste." style="width: 100%; font-size: 12px; padding: 8px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); font-family: var(--font-family-body); resize: vertical; box-sizing: border-box;"></textarea>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px;">
+            <span id="metric-comment-remove" style="display:none; font-size: 10px; color: var(--text-secondary); cursor: pointer; text-decoration: underline;" onclick="removeMetricComment()">Remover</span>
+            <div style="display: flex; gap: 6px; margin-left: auto;">
+              <button class="filter-btn" style="height: 26px; font-size: 11px; padding: 0 12px;" onclick="closeMetricCommentPopover()">Cancelar</button>
+              <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 14px;" onclick="saveMetricComment()">Salvar</button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- ========================================== -->
