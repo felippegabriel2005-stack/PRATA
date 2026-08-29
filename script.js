@@ -945,7 +945,12 @@ function renderClientInsights(clientName) {
 // de TODOS eles de uma vez (uma única leitura de campaign_metrics/targets,
 // em vez de uma consulta por cliente). Clientes sem nenhuma campanha
 // importada mantêm o status atual (nada pra analisar ainda).
-function updateClientStatusesFromCampaigns(campaigns, targets) {
+//
+// A Receita usada no ROI é a UNIFICADA (leads_sales + portal, quando existe
+// campo mapeado) — não só campaign_metrics.revenue — pelo mesmo motivo que
+// o resto do app já faz isso: revenue de mídia sozinho pode estar muito
+// longe do resultado comercial real do cliente (ver resolveUnifiedSalesAndRevenue).
+function updateClientStatusesFromCampaigns(campaigns, targets, allCustomFields, allCustomFieldValues, allLeadsRows) {
   const byClient = {};
   campaigns.forEach(c => {
     if (!byClient[c.client_slug]) {
@@ -967,10 +972,34 @@ function updateClientStatusesFromCampaigns(campaigns, targets) {
     targetsByClient[t.client_slug].push(t);
   });
 
+  const fieldsByClient = {};
+  (allCustomFields || []).forEach(f => {
+    if (!fieldsByClient[f.client_slug]) fieldsByClient[f.client_slug] = [];
+    fieldsByClient[f.client_slug].push(f);
+  });
+  const valuesByClient = {};
+  (allCustomFieldValues || []).forEach(v => {
+    if (!valuesByClient[v.client_slug]) valuesByClient[v.client_slug] = [];
+    valuesByClient[v.client_slug].push(v);
+  });
+  const leadsByClient = {};
+  (allLeadsRows || []).forEach(l => {
+    if (!leadsByClient[l.client_slug]) leadsByClient[l.client_slug] = [];
+    leadsByClient[l.client_slug].push(l);
+  });
+
   allClients.forEach(c => {
     const raw = byClient[c.slug];
     if (!raw) return;
-    const { status, reasons } = computeClientStatusFromData(raw, targetsByClient[c.slug] || []);
+
+    // Só a Receita é substituída pela unificada — Conversões continua sendo
+    // a métrica de mídia pura (usada no CPA/metas de conversão), nunca a
+    // venda real: misturar os dois aqui repetiria o erro que o resto do app
+    // já corrigiu (conversão de mídia ≠ venda confirmada).
+    const unified = resolveUnifiedSalesAndRevenue(leadsByClient[c.slug] || [], fieldsByClient[c.slug] || [], valuesByClient[c.slug] || []);
+    const rawForStatus = unified.revenue.records.length ? { ...raw, revenue: unified.revenue.total } : raw;
+
+    const { status, reasons } = computeClientStatusFromData(rawForStatus, targetsByClient[c.slug] || []);
     c.status = status;
     c.statusReasons = reasons;
   });
@@ -1251,7 +1280,7 @@ async function refreshAgencyPeriodDataFromReal() {
   ]);
   const campaigns = data || [];
 
-  updateClientStatusesFromCampaigns(campaigns, targets || []);
+  updateClientStatusesFromCampaigns(campaigns, targets || [], allCustomFields || [], allCustomFieldValues || [], allLeadsRows || []);
 
   // Campos personalizados mapeados, agrupados por cliente — usados abaixo
   // pra substituir receita/vendas de mídia pelo valor informado pelo
