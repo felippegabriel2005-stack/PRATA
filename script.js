@@ -971,6 +971,210 @@ function updateClientStatusesFromCampaigns(campaigns, targets) {
   });
 }
 
+// ==========================================================================
+// ALERTAS AUTOMÁTICOS (sino do Dashboard Pai)
+// ==========================================================================
+// Cada alerta é { severity: 'critical'|'attention', clientName, message }.
+// Parte reaproveita o que já existe (client.statusReasons, calculado acima em
+// computeClientStatusFromData: ROI negativo/baixo, meta fora do alvo,
+// investimento sem nenhuma conversão) — o resto é novo: campo obrigatório
+// pendente, cliente sem atualizar vendas há dias, dados importados
+// desatualizados, e comparação com o mês anterior (receita, CPA, leads).
+let portfolioAlerts = [];
+
+const PORTFOLIO_ALERT_THRESHOLDS = {
+  cpaIncreasePct: 30,        // CPA subiu mais de 30% vs mês anterior
+  revenueDropPct: 15,        // Receita caiu mais de 15% vs mês anterior
+  leadsDropPct: 30,          // Queda de leads considerada "brusca"
+  staleSalesDays: 3,         // Dias sem preencher vendas pra alertar
+  staleImportDays: 7,        // Dias sem nova linha de campanha importada
+  lowConversionInvest: 1000  // Investimento (R$) considerado "alto" numa campanha sem nenhuma conversão no mês
+};
+
+function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues) {
+  const alerts = [];
+  const now = new Date();
+  const curMonthKey = formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1)).slice(0, 7);
+  const prevMonthKey = formatDateISO(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
+
+  // --- 1) Reaproveita o status já calculado por cliente ---
+  allClients.forEach(c => {
+    if (c.status !== 'critical' && c.status !== 'attention') return;
+    const reasons = c.statusReasons || [];
+    if (reasons.length) {
+      reasons.forEach(reason => alerts.push({ severity: c.status, clientName: c.name, message: reason }));
+    } else {
+      alerts.push({ severity: c.status, clientName: c.name, message: `Status "${c.status === 'critical' ? 'Crítico' : 'Atenção'}" — revise os dados importados.` });
+    }
+  });
+
+  // --- 2) Agrupa campanhas por cliente+mês (mês atual e anterior) e por
+  // cliente+campanha (só mês atual, pra achar campanha parada sem conversão) ---
+  const bySlugMonth = {};
+  const bySlugCampaignThisMonth = {};
+  const latestDateBySlug = {};
+
+  (campaigns || []).forEach(c => {
+    const slug = c.client_slug;
+    if (!slug || !c.date) return;
+    const month = c.date.slice(0, 7);
+
+    if (!latestDateBySlug[slug] || c.date > latestDateBySlug[slug]) latestDateBySlug[slug] = c.date;
+
+    if (!bySlugMonth[slug]) bySlugMonth[slug] = {};
+    if (!bySlugMonth[slug][month]) bySlugMonth[slug][month] = { invest: 0, clicks: 0, convs: 0, revenue: 0, leads: 0 };
+    const m = bySlugMonth[slug][month];
+    m.invest += Number(c.invest) || 0;
+    m.clicks += Number(c.clicks) || 0;
+    m.convs += Number(c.conversions) || 0;
+    m.revenue += Number(c.revenue) || 0;
+    m.leads += Number(c.leads) || 0;
+
+    if (month === curMonthKey) {
+      if (!bySlugCampaignThisMonth[slug]) bySlugCampaignThisMonth[slug] = {};
+      const key = `${c.campaign_name}||${c.platform}`;
+      if (!bySlugCampaignThisMonth[slug][key]) bySlugCampaignThisMonth[slug][key] = { name: c.campaign_name, invest: 0, convs: 0 };
+      bySlugCampaignThisMonth[slug][key].invest += Number(c.invest) || 0;
+      bySlugCampaignThisMonth[slug][key].convs += Number(c.conversions) || 0;
+    }
+  });
+
+  allClients.forEach(client => {
+    const slug = client.slug;
+    const cur = (bySlugMonth[slug] || {})[curMonthKey];
+    const prev = (bySlugMonth[slug] || {})[prevMonthKey];
+
+    if (cur && prev) {
+      const curCpa = cur.convs > 0 ? cur.invest / cur.convs : null;
+      const prevCpa = prev.convs > 0 ? prev.invest / prev.convs : null;
+      if (curCpa !== null && prevCpa !== null && prevCpa > 0) {
+        const pct = ((curCpa - prevCpa) / prevCpa) * 100;
+        if (pct > PORTFOLIO_ALERT_THRESHOLDS.cpaIncreasePct) {
+          alerts.push({ severity: 'attention', clientName: client.name, message: `Aumento de ${Math.round(pct)}% no CPA em relação ao mês anterior (${formatCurrency(prevCpa)} → ${formatCurrency(curCpa)}).` });
+        }
+      }
+
+      if (prev.revenue > 0 && cur.revenue < prev.revenue) {
+        const pct = ((prev.revenue - cur.revenue) / prev.revenue) * 100;
+        if (pct > PORTFOLIO_ALERT_THRESHOLDS.revenueDropPct) {
+          alerts.push({ severity: 'attention', clientName: client.name, message: `Receita caiu ${Math.round(pct)}% em relação ao mês anterior (${formatCurrency(prev.revenue)} → ${formatCurrency(cur.revenue)}).` });
+        }
+      }
+
+      if (prev.leads > 0 && cur.leads < prev.leads) {
+        const pct = ((prev.leads - cur.leads) / prev.leads) * 100;
+        if (pct > PORTFOLIO_ALERT_THRESHOLDS.leadsDropPct) {
+          alerts.push({ severity: 'attention', clientName: client.name, message: `Queda de ${Math.round(pct)}% nos leads em relação ao mês anterior (${formatNumber(prev.leads)} → ${formatNumber(cur.leads)}).` });
+        }
+      }
+    }
+
+    const latest = latestDateBySlug[slug];
+    if (latest) {
+      const daysSince = Math.floor((now - new Date(latest + 'T00:00:00')) / 86400000);
+      if (daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleImportDays) {
+        alerts.push({ severity: 'attention', clientName: client.name, message: `Dados importados desatualizados — última linha de campanha é de ${formatDate(new Date(latest + 'T00:00:00'))} (${daysSince} dias atrás).` });
+      }
+    }
+
+    Object.values(bySlugCampaignThisMonth[slug] || {}).forEach(camp => {
+      if (camp.invest >= PORTFOLIO_ALERT_THRESHOLDS.lowConversionInvest && camp.convs === 0) {
+        alerts.push({ severity: 'attention', clientName: client.name, message: `Campanha "${camp.name}" com ${formatCurrency(camp.invest)} investidos este mês e nenhuma conversão registrada.` });
+      }
+    });
+  });
+
+  // --- 3) Campos personalizados: obrigatório pendente + vendas sem atualizar ---
+  const fieldsBySlug = {};
+  (allCustomFields || []).forEach(f => {
+    if (!fieldsBySlug[f.client_slug]) fieldsBySlug[f.client_slug] = [];
+    fieldsBySlug[f.client_slug].push(f);
+  });
+  const valuesByField = {};
+  (allCustomFieldValues || []).forEach(v => {
+    if (!valuesByField[v.field_id]) valuesByField[v.field_id] = [];
+    valuesByField[v.field_id].push(v);
+  });
+
+  allClients.forEach(client => {
+    (fieldsBySlug[client.slug] || []).forEach(field => {
+      const values = valuesByField[field.id] || [];
+
+      // Campo obrigatório mapeado como vendas diárias já cai no alerta mais
+      // específico "sem preencher vendas há N dias" logo abaixo — evita
+      // dois alertas diferentes sobre o mesmo campo pendente.
+      const isDailySalesField = field.metric_mapping === 'sales' && field.frequency === 'daily';
+      if (field.required && field.frequency !== 'on_demand' && !isDailySalesField) {
+        const periodIso = formatDateISO(computePeriodDateForFrequency(field.frequency, now));
+        const hasValue = values.some(v => v.period_date === periodIso);
+        if (!hasValue) {
+          alerts.push({ severity: 'attention', clientName: client.name, message: `Campo obrigatório "${field.name}" pendente de preenchimento.` });
+        }
+      }
+
+      if (isDailySalesField) {
+        const lastFill = values.map(v => v.period_date).filter(Boolean).sort().reverse()[0];
+        const daysSince = lastFill ? Math.floor((now - new Date(lastFill + 'T00:00:00')) / 86400000) : null;
+        if (daysSince === null || daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleSalesDays) {
+          const prefix = daysSince === null ? 'Nunca preencheu' : `Está há ${daysSince} dia(s) sem preencher`;
+          alerts.push({ severity: 'attention', clientName: client.name, message: `${prefix} vendas ("${field.name}").` });
+        }
+      }
+    });
+  });
+
+  // Crítico primeiro, depois por cliente — e um teto pra não virar uma
+  // lista infinita se a carteira for grande.
+  alerts.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
+    return a.clientName.localeCompare(b.clientName);
+  });
+  return alerts.slice(0, 40);
+}
+
+function renderPaiAlerts() {
+  const badge = document.getElementById('pai-bell-badge');
+  const list = document.getElementById('pai-alerts-list');
+  const empty = document.getElementById('pai-alerts-empty');
+  if (!badge || !list || !empty) return;
+
+  const criticalCount = portfolioAlerts.filter(a => a.severity === 'critical').length;
+
+  if (portfolioAlerts.length > 0) {
+    badge.style.display = 'block';
+    badge.innerText = portfolioAlerts.length;
+    badge.style.backgroundColor = criticalCount > 0 ? 'var(--color-red)' : 'var(--color-orange, #f59e0b)';
+  } else {
+    badge.style.display = 'none';
+  }
+
+  empty.style.display = portfolioAlerts.length ? 'none' : 'block';
+  list.innerHTML = portfolioAlerts.map(a => `
+    <div class="pai-alert-item" style="border: 1px solid ${a.severity === 'critical' ? 'var(--color-red-border, #ef4444)' : 'var(--border-color)'}; border-radius: var(--border-radius-sm); padding: 8px 10px; cursor: pointer;" onclick="selectClient('${a.clientName.replace(/'/g, "\\'")}'); document.getElementById('pai-alerts-dropdown').style.display='none';">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px;">
+        <span style="font-size: 11px; font-weight: 600; color: var(--text-primary);">${escapeHtml(a.clientName)}</span>
+        <span class="table-badge ${a.severity}" style="font-size: 8px;">${a.severity === 'critical' ? 'Crítico' : 'Atenção'}</span>
+      </div>
+      <div style="font-size: 10px; color: var(--text-secondary); margin-top: 3px;">${escapeHtml(a.message)}</div>
+    </div>
+  `).join('');
+}
+
+function togglePaiAlertsDropdown(event) {
+  if (event) event.stopPropagation();
+  const dropdown = document.getElementById('pai-alerts-dropdown');
+  if (!dropdown) return;
+  dropdown.style.display = dropdown.style.display === 'none' || !dropdown.style.display ? 'block' : 'none';
+}
+
+document.addEventListener('click', function(event) {
+  const dropdown = document.getElementById('pai-alerts-dropdown');
+  const btn = document.getElementById('pai-bell-btn');
+  if (dropdown && dropdown.style.display !== 'none' && !dropdown.contains(event.target) && event.target !== btn && !btn.contains(event.target)) {
+    dropdown.style.display = 'none';
+  }
+});
+
 // Agrega dados reais de TODOS os clientes pro Dashboard Pai (agência). Se não
 // houver nenhum dado importado ainda, mantém agencyPeriodData mockado.
 // Aproveita a mesma leitura de campaign_metrics pra também recalcular o
@@ -1092,6 +1296,9 @@ async function refreshAgencyPeriodDataFromReal() {
   agencyPeriodData['All Time'] = aggregate(campaigns, allCustomFieldValues || [], allLeadsRows || []);
   agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart), valuesInRange(monthStart), leadsInRange(monthStart));
   agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart), valuesInRange(quarterStart), leadsInRange(quarterStart));
+
+  portfolioAlerts = computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues);
+  renderPaiAlerts();
 
   usingRealAgencyData = campaigns.length > 0;
 }

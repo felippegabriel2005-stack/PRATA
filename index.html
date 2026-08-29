@@ -193,7 +193,17 @@
             
             <!-- Header Controls -->
             <div class="header-controls">
-              <button class="header-ctrl-btn" onclick="alert('Notificações em desenvolvimento.')">🔔</button>
+              <div style="position: relative;">
+                <button class="header-ctrl-btn" id="pai-bell-btn" onclick="togglePaiAlertsDropdown(event)" style="position: relative;">
+                  🔔
+                  <span id="pai-bell-badge" style="display:none; position: absolute; top: -4px; right: -4px; background: var(--color-red); color: #fff; font-size: 9px; font-weight: 700; border-radius: 999px; min-width: 15px; height: 15px; line-height: 15px; text-align: center; padding: 0 3px;">0</span>
+                </button>
+                <div id="pai-alerts-dropdown" style="display:none; position: absolute; top: 40px; right: 0; width: 320px; max-height: 400px; overflow-y: auto; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 12px 32px rgba(0,0,0,0.5); z-index: 500; padding: 10px;">
+                  <div style="font-size: 11px; font-weight: 600; color: var(--text-primary); margin-bottom: 8px;">Alertas da carteira</div>
+                  <div id="pai-alerts-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                  <div id="pai-alerts-empty" style="display:none; font-size: 11px; color: var(--text-secondary); text-align: center; padding: 12px 0;">Tudo certo por aqui. Nenhum alerta no momento. ✓</div>
+                </div>
+              </div>
               <button class="header-ctrl-btn assist-toggle-btn" onclick="toggleAssist()">✦</button>
               <div class="header-avatar" onclick="toggleUserMenu(event)" style="cursor: pointer;">FG</div>
             </div>
