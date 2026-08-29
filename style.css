@@ -275,6 +275,12 @@ body {
   box-shadow: 0 0 6px var(--color-red);
 }
 
+.sidebar-health-score {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .client-more {
   padding-left: 12px;
   margin-top: 6px;
@@ -606,6 +612,13 @@ body {
   font-size: 13px;
   font-weight: 700;
   color: var(--text-primary);
+}
+
+.attention-score {
+  font-family: var(--font-family-body);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
 }
 
 /* Card Body */
@@ -975,6 +988,10 @@ body.light .catalogo-metric-item:hover {
   font-size: 9px;
   color: var(--color-purple);
   letter-spacing: 0;
+}
+
+.metric-actions-icon:hover {
+  opacity: 1 !important;
 }
 
 .custom-table td {

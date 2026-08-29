@@ -130,10 +130,10 @@ function computeClientStatusFromData(raw, targetsRows) {
 
     const pctOff = Math.round(Math.abs(ratio - 1) * 100);
     if (ratio > 1.3) {
-      reasons.push(`${t.metric_name.toUpperCase()} está ${pctOff}% fora da meta definida em "${t.objective}".`);
+      reasons.push({ text: `${t.metric_name.toUpperCase()} está ${pctOff}% fora da meta definida em "${t.objective}".`, severity: 'critical' });
       severity = Math.max(severity, 2);
     } else if (ratio > 1.1) {
-      reasons.push(`${t.metric_name.toUpperCase()} está levemente fora da meta definida em "${t.objective}" (${pctOff}%).`);
+      reasons.push({ text: `${t.metric_name.toUpperCase()} está levemente fora da meta definida em "${t.objective}" (${pctOff}%).`, severity: 'attention' });
       severity = Math.max(severity, 1);
     }
   });
@@ -768,13 +768,14 @@ async function refreshClientDetailedDataIfReal(clientName) {
 
   clientDetailedData[clientName] = built;
 
-  // Mantém o status do cliente na sidebar/Dashboard Pai em sincronia com o
-  // que acabou de ser calculado a partir dos dados reais deste cliente.
-  const clientRef = allClients.find(c => c.name === clientName);
-  if (clientRef) {
-    clientRef.status = built.statusClass;
-    clientRef.statusReasons = built.statusReasons;
-  }
+  // NÃO sobrescreve clientRef.status/.statusReasons/.healthScore aqui — desde
+  // que o Score de Saúde existe, quem calcula esses três de forma completa
+  // (ROI/metas + tendência mês a mês + atualização de dados + campos
+  // pendentes) é computePortfolioAlerts, chamado sempre que o Dashboard Pai
+  // carrega (inclusive no boot do app, antes de qualquer cliente ser aberto).
+  // O status calculado aqui (built.statusClass/.statusReasons) é mais pobre
+  // (só ROI/metas) e sobrescrever com ele deixaria a sidebar/IA
+  // inconsistentes com o score já calculado.
 
   // Insights estratégicos por IA: usa cache do Supabase (client_ai_insights) e
   // só chama a OpenAI de novo quando os dados reais do cliente mudaram
@@ -976,14 +977,24 @@ function updateClientStatusesFromCampaigns(campaigns, targets) {
 }
 
 // ==========================================================================
-// ALERTAS AUTOMÁTICOS (sino do Dashboard Pai)
+// ALERTAS AUTOMÁTICOS (sino do Dashboard Pai) + SCORE DE SAÚDE DO CLIENTE
 // ==========================================================================
 // Cada alerta é { severity: 'critical'|'attention', clientName, message }.
 // Parte reaproveita o que já existe (client.statusReasons, calculado acima em
 // computeClientStatusFromData: ROI negativo/baixo, meta fora do alvo,
 // investimento sem nenhuma conversão) — o resto é novo: campo obrigatório
 // pendente, cliente sem atualizar vendas há dias, dados importados
-// desatualizados, e comparação com o mês anterior (receita, CPA, leads).
+// desatualizados, comparação com o mês anterior (receita, CPA, leads) e
+// completude (cliente sem nenhum dado configurado ainda).
+//
+// A MESMA lista de motivos vira o Score de Saúde (0-100): cada motivo já
+// carrega uma severidade, então o score é só 100 menos as penalidades de
+// tudo que foi encontrado — client.status/.statusReasons (usados em todo
+// canto: sidebar, cards de atenção, Assistente de IA) passam a ser
+// derivados do score, não mais só do ROI/metas isoladamente. Isso roda toda
+// vez que o Dashboard Pai carrega/atualiza (refreshAgencyPeriodDataFromReal)
+// — não é um valor calculado uma vez e cacheado, é recalculado do zero a
+// cada visita com os dados mais recentes do Supabase.
 let portfolioAlerts = [];
 
 const PORTFOLIO_ALERT_THRESHOLDS = {
@@ -995,21 +1006,43 @@ const PORTFOLIO_ALERT_THRESHOLDS = {
   lowConversionInvest: 1000  // Investimento (R$) considerado "alto" numa campanha sem nenhuma conversão no mês
 };
 
-function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues) {
+// Quanto cada motivo tira do score de 100 — crítico pesa mais que atenção,
+// mas nenhum motivo isolado zera o cliente sozinho (só o acúmulo de vários).
+const HEALTH_SCORE_PENALTY = { critical: 25, attention: 10 };
+
+function computeHealthScoreFromReasons(reasons) {
+  let score = 100;
+  (reasons || []).forEach(r => { score -= HEALTH_SCORE_PENALTY[r.severity] || 0; });
+  return Math.max(0, Math.min(100, score));
+}
+
+function healthStatusFromScore(score) {
+  if (score >= 80) return 'healthy';
+  if (score >= 50) return 'attention';
+  return 'critical';
+}
+
+function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues, allLeadsRows) {
   const alerts = [];
   const now = new Date();
   const curMonthKey = formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1)).slice(0, 7);
   const prevMonthKey = formatDateISO(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
 
-  // --- 1) Reaproveita o status já calculado por cliente ---
+  // Acumula, por cliente, TODOS os motivos com severidade — a mesma lista
+  // alimenta o sino (achatada abaixo) e o score de saúde (soma penalidades).
+  const reasonsBySlug = {};
+  allClients.forEach(c => { reasonsBySlug[c.slug] = []; });
+
+  function addReason(slug, severity, text) {
+    if (!reasonsBySlug[slug]) reasonsBySlug[slug] = [];
+    reasonsBySlug[slug].push({ severity, text });
+    const client = allClients.find(c => c.slug === slug);
+    alerts.push({ severity, clientName: client ? client.name : slug, message: text });
+  }
+
+  // --- 1) Reaproveita o status já calculado por cliente (ROI/metas) ---
   allClients.forEach(c => {
-    if (c.status !== 'critical' && c.status !== 'attention') return;
-    const reasons = c.statusReasons || [];
-    if (reasons.length) {
-      reasons.forEach(reason => alerts.push({ severity: c.status, clientName: c.name, message: reason }));
-    } else {
-      alerts.push({ severity: c.status, clientName: c.name, message: `Status "${c.status === 'critical' ? 'Crítico' : 'Atenção'}" — revise os dados importados.` });
-    }
+    (c.statusReasons || []).forEach(r => addReason(c.slug, r.severity, r.text));
   });
 
   // --- 2) Agrupa campanhas por cliente+mês (mês atual e anterior) e por
@@ -1054,21 +1087,21 @@ function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues
       if (curCpa !== null && prevCpa !== null && prevCpa > 0) {
         const pct = ((curCpa - prevCpa) / prevCpa) * 100;
         if (pct > PORTFOLIO_ALERT_THRESHOLDS.cpaIncreasePct) {
-          alerts.push({ severity: 'attention', clientName: client.name, message: `Aumento de ${Math.round(pct)}% no CPA em relação ao mês anterior (${formatCurrency(prevCpa)} → ${formatCurrency(curCpa)}).` });
+          addReason(slug, 'attention', `Aumento de ${Math.round(pct)}% no CPA em relação ao mês anterior (${formatCurrency(prevCpa)} → ${formatCurrency(curCpa)}).`);
         }
       }
 
       if (prev.revenue > 0 && cur.revenue < prev.revenue) {
         const pct = ((prev.revenue - cur.revenue) / prev.revenue) * 100;
         if (pct > PORTFOLIO_ALERT_THRESHOLDS.revenueDropPct) {
-          alerts.push({ severity: 'attention', clientName: client.name, message: `Receita caiu ${Math.round(pct)}% em relação ao mês anterior (${formatCurrency(prev.revenue)} → ${formatCurrency(cur.revenue)}).` });
+          addReason(slug, 'attention', `Receita caiu ${Math.round(pct)}% em relação ao mês anterior (${formatCurrency(prev.revenue)} → ${formatCurrency(cur.revenue)}).`);
         }
       }
 
       if (prev.leads > 0 && cur.leads < prev.leads) {
         const pct = ((prev.leads - cur.leads) / prev.leads) * 100;
         if (pct > PORTFOLIO_ALERT_THRESHOLDS.leadsDropPct) {
-          alerts.push({ severity: 'attention', clientName: client.name, message: `Queda de ${Math.round(pct)}% nos leads em relação ao mês anterior (${formatNumber(prev.leads)} → ${formatNumber(cur.leads)}).` });
+          addReason(slug, 'attention', `Queda de ${Math.round(pct)}% nos leads em relação ao mês anterior (${formatNumber(prev.leads)} → ${formatNumber(cur.leads)}).`);
         }
       }
     }
@@ -1077,13 +1110,13 @@ function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues
     if (latest) {
       const daysSince = Math.floor((now - new Date(latest + 'T00:00:00')) / 86400000);
       if (daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleImportDays) {
-        alerts.push({ severity: 'attention', clientName: client.name, message: `Dados importados desatualizados — última linha de campanha é de ${formatDate(new Date(latest + 'T00:00:00'))} (${daysSince} dias atrás).` });
+        addReason(slug, 'attention', `Dados importados desatualizados — última linha de campanha é de ${formatDate(new Date(latest + 'T00:00:00'))} (${daysSince} dias atrás).`);
       }
     }
 
     Object.values(bySlugCampaignThisMonth[slug] || {}).forEach(camp => {
       if (camp.invest >= PORTFOLIO_ALERT_THRESHOLDS.lowConversionInvest && camp.convs === 0) {
-        alerts.push({ severity: 'attention', clientName: client.name, message: `Campanha "${camp.name}" com ${formatCurrency(camp.invest)} investidos este mês e nenhuma conversão registrada.` });
+        addReason(slug, 'attention', `Campanha "${camp.name}" com ${formatCurrency(camp.invest)} investidos este mês e nenhuma conversão registrada.`);
       }
     });
   });
@@ -1112,7 +1145,7 @@ function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues
         const periodIso = formatDateISO(computePeriodDateForFrequency(field.frequency, now));
         const hasValue = values.some(v => v.period_date === periodIso);
         if (!hasValue) {
-          alerts.push({ severity: 'attention', clientName: client.name, message: `Campo obrigatório "${field.name}" pendente de preenchimento.` });
+          addReason(client.slug, 'attention', `Campo obrigatório "${field.name}" pendente de preenchimento.`);
         }
       }
 
@@ -1121,10 +1154,34 @@ function computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues
         const daysSince = lastFill ? Math.floor((now - new Date(lastFill + 'T00:00:00')) / 86400000) : null;
         if (daysSince === null || daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleSalesDays) {
           const prefix = daysSince === null ? 'Nunca preencheu' : `Está há ${daysSince} dia(s) sem preencher`;
-          alerts.push({ severity: 'attention', clientName: client.name, message: `${prefix} vendas ("${field.name}").` });
+          addReason(client.slug, 'attention', `${prefix} vendas ("${field.name}").`);
         }
       }
     });
+  });
+
+  // --- 4) Completude: cliente sem NENHUM dado configurado ainda (nem
+  // campanha importada, nem campo personalizado, nem venda histórica) — o
+  // Score de Saúde precisa refletir isso, não só performance de campanha. ---
+  const hasCampaignBySlug = new Set((campaigns || []).map(c => c.client_slug));
+  const hasFieldBySlug = new Set((allCustomFields || []).map(f => f.client_slug));
+  const hasLeadsBySlug = new Set((allLeadsRows || []).map(l => l.client_slug));
+  allClients.forEach(client => {
+    const slug = client.slug;
+    if (!hasCampaignBySlug.has(slug) && !hasFieldBySlug.has(slug) && !hasLeadsBySlug.has(slug)) {
+      addReason(slug, 'critical', 'Nenhum dado importado ou campo personalizado configurado ainda para este cliente.');
+    }
+  });
+
+  // --- Score de Saúde (0-100): soma as penalidades de todos os motivos
+  // encontrados acima. status/statusReasons de cada cliente passam a vir
+  // daqui — fonte única, usada pelo sino, pelos cards de atenção, pela
+  // sidebar e pelo Assistente de IA. ---
+  allClients.forEach(client => {
+    const reasons = (reasonsBySlug[client.slug] || []).slice().sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'critical' ? -1 : 1));
+    client.healthScore = computeHealthScoreFromReasons(reasons);
+    client.status = healthStatusFromScore(client.healthScore);
+    client.statusReasons = reasons;
   });
 
   // Crítico primeiro, depois por cliente — e um teto pra não virar uma
@@ -1301,7 +1358,7 @@ async function refreshAgencyPeriodDataFromReal() {
   agencyPeriodData['Mês'] = aggregate(campaigns.filter(c => new Date(c.date) >= monthStart), valuesInRange(monthStart), leadsInRange(monthStart));
   agencyPeriodData['Trimestre'] = aggregate(campaigns.filter(c => new Date(c.date) >= quarterStart), valuesInRange(quarterStart), leadsInRange(quarterStart));
 
-  portfolioAlerts = computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues);
+  portfolioAlerts = computePortfolioAlerts(campaigns, allCustomFields, allCustomFieldValues, allLeadsRows);
   renderPaiAlerts();
 
   usingRealAgencyData = campaigns.length > 0;
@@ -1701,10 +1758,13 @@ async function showDashboardPai() {
   const paiEndInput = document.getElementById('pai-period-end');
   if (paiEndInput) paiEndInput.value = "31/05/2025";
 
-  if (!agencyRealDataChecked) {
-    agencyRealDataChecked = true;
-    await refreshAgencyPeriodDataFromReal();
-  }
+  // Sempre recarrega do Supabase ao (re)abrir o Dashboard Pai — o Score de
+  // Saúde e o sino de alertas precisam refletir o estado atual da carteira
+  // a cada visita, não um snapshot da primeira vez que a tela foi aberta
+  // nesta sessão (antes só rodava uma vez, controlado por agencyRealDataChecked).
+  agencyRealDataChecked = true;
+  await refreshAgencyPeriodDataFromReal();
+  updateSidebarHealthScores();
 
   const headerCountEl = document.getElementById('header-client-count');
   if (headerCountEl) headerCountEl.innerText = `${allClients.length} cliente${allClients.length === 1 ? '' : 's'} ativo${allClients.length === 1 ? '' : 's'}`;
@@ -1742,16 +1802,18 @@ function renderAttentionCards() {
   flagged.forEach(c => {
     const isCritical = c.status === 'critical';
     const reasons = Array.isArray(c.statusReasons) ? c.statusReasons : [];
-    const desc = reasons[0] ? escapeHtml(reasons[0]) : `${escapeHtml(c.name)} está com status "${isCritical ? 'Crítico' : 'Atenção'}".`;
-    const impact = reasons[1] ? escapeHtml(reasons[1]) : 'Pergunte ao Assistente PRATA o motivo para mais detalhes.';
-    const problemCell = reasons.length ? escapeHtml(reasons.join(' ')) : `Status "${isCritical ? 'Crítico' : 'Atenção'}" — revise os dados importados.`;
+    const reasonTexts = reasons.map(r => (r && typeof r === 'object') ? r.text : r);
+    const desc = reasonTexts[0] ? escapeHtml(reasonTexts[0]) : `${escapeHtml(c.name)} está com status "${isCritical ? 'Crítico' : 'Atenção'}".`;
+    const impact = reasonTexts[1] ? escapeHtml(reasonTexts[1]) : 'Pergunte ao Assistente PRATA o motivo para mais detalhes.';
+    const problemCell = reasonTexts.length ? escapeHtml(reasonTexts.join(' ')) : `Status "${isCritical ? 'Crítico' : 'Atenção'}" — revise os dados importados.`;
+    const scoreText = typeof c.healthScore === 'number' ? `${c.healthScore}/100` : '';
 
     const card = document.createElement('div');
     card.className = `attention-card ${isCritical ? 'critical-indicator' : 'attention-indicator'}`;
     card.onclick = () => selectClient(c.name);
     card.innerHTML = `
       <div class="attention-card-header">
-        <span class="attention-client-name">${escapeHtml(c.name)}</span>
+        <span class="attention-client-name">${escapeHtml(c.name)}${scoreText ? ` <span class="attention-score">${scoreText}</span>` : ''}</span>
         <span class="attention-badge ${isCritical ? 'critical' : 'attention'}">${isCritical ? 'Crítico' : 'Atenção'}</span>
       </div>
       <div class="attention-card-body">
@@ -1807,6 +1869,14 @@ function renderHealthSection() {
     if (list.length > 3) html += ` <span class="health-examples-muted">+ ${list.length - 3} mais</span>`;
     examplesEl.innerHTML = html;
   });
+
+  const avgScoreEl = document.getElementById('health-avg-score');
+  if (avgScoreEl) {
+    const withScore = allClients.filter(c => typeof c.healthScore === 'number');
+    avgScoreEl.innerText = withScore.length
+      ? Math.round(withScore.reduce((s, c) => s + c.healthScore, 0) / withScore.length)
+      : '—';
+  }
 }
 
 // Gera o donut de MRR a partir da receita real por cliente (campaign_metrics).
@@ -3704,46 +3774,125 @@ async function saveMatrixStructure(clientSlug, analysisId, rows) {
 }
 
 // ==========================================================================
-// COMENTÁRIO DO ANALISTA (só na matriz de métricas das análises)
+// AÇÕES POR MÉTRICA: editar meta / comentário do analista
+// (só na matriz de métricas das análises)
 // ==========================================================================
-// Guardado direto no metric.comment, dentro da MESMA estrutura JSON já
-// persistida por saveMatrixStructure — sem tabela nova.
-let activeMetricCommentTarget = null; // { rowIndex, metricIndex }
+// Tudo guardado direto no próprio objeto da métrica (metric.meta,
+// metric.comment), dentro da MESMA estrutura JSON já persistida por
+// saveMatrixStructure — sem tabela nova. O ⋮ de cada célula abre um menu
+// com as duas ações; o 💬 só aparece quando já existe comentário (atalho
+// pra abrir direto sem passar pelo menu).
+let activeMetricTarget = null; // { rowIndex, metricIndex }
+let activeMetricRect = null;   // posição do controle clicado, pra ancorar o popover/menu seguinte
 
-function openMetricCommentPopover(event, rowIndex, metricIndex) {
+function positionFloatingPanel(panel, width) {
+  if (!activeMetricRect) return;
+  const left0 = activeMetricRect.left + (activeMetricRect.width / 2) - (width / 2);
+  const left = Math.max(8, Math.min(left0, window.innerWidth - width - 8));
+  panel.style.top = `${activeMetricRect.bottom + 6}px`;
+  panel.style.left = `${left}px`;
+}
+
+function openMetricActionsMenu(event, rowIndex, metricIndex) {
   event.stopPropagation();
-  activeMetricCommentTarget = { rowIndex, metricIndex };
+  activeMetricTarget = { rowIndex, metricIndex };
+  activeMetricRect = event.currentTarget.getBoundingClientRect();
+  closeMetricCommentPopover();
+  closeMetricMetaPopover();
+
+  const menu = document.getElementById('metric-actions-menu');
+  const commentItem = document.getElementById('metric-actions-comment-item');
+  if (!menu || !commentItem) return;
+
+  const metric = conversaoRows[rowIndex].metrics[metricIndex];
+  commentItem.innerText = metric.comment ? 'Editar comentário' : 'Adicionar comentário';
+
+  menu.style.display = 'flex';
+  positionFloatingPanel(menu, 170);
+}
+
+function closeMetricActionsMenu() {
+  const menu = document.getElementById('metric-actions-menu');
+  if (menu) menu.style.display = 'none';
+}
+
+function openMetricMetaPopoverFromMenu() {
+  closeMetricActionsMenu();
+  if (!activeMetricTarget) return;
+  const { rowIndex, metricIndex } = activeMetricTarget;
+  const metric = conversaoRows[rowIndex].metrics[metricIndex];
+
+  const popover = document.getElementById('metric-meta-popover');
+  const input = document.getElementById('metric-meta-input');
+  if (!popover || !input) return;
+
+  input.value = (metric.meta !== undefined && metric.meta !== null) ? metric.meta : '';
+  popover.style.display = 'block';
+  positionFloatingPanel(popover, 220);
+  input.focus();
+}
+
+function closeMetricMetaPopover() {
+  const popover = document.getElementById('metric-meta-popover');
+  if (popover) popover.style.display = 'none';
+}
+
+function saveMetricMeta() {
+  if (!activeMetricTarget) return;
+  const { rowIndex, metricIndex } = activeMetricTarget;
+  const raw = document.getElementById('metric-meta-input').value.trim();
+
+  if (raw) {
+    const parsed = parseFloat(raw.replace(',', '.'));
+    if (!isNaN(parsed)) conversaoRows[rowIndex].metrics[metricIndex].meta = parsed;
+  } else {
+    delete conversaoRows[rowIndex].metrics[metricIndex].meta;
+  }
+
+  saveMatrixStructure(clientSlugFromName(currentClient), currentAnalysisId, conversaoRows);
+  closeMetricMetaPopover();
+  updateConversaoMetrics();
+}
+
+function openMetricCommentPopoverFromMenu() {
+  closeMetricActionsMenu();
+  openMetricCommentPopoverCore();
+}
+
+// Clique direto no badge 💬 (atalho quando a métrica já tem comentário).
+function openMetricCommentPopoverDirect(event, rowIndex, metricIndex) {
+  event.stopPropagation();
+  activeMetricTarget = { rowIndex, metricIndex };
+  activeMetricRect = event.currentTarget.getBoundingClientRect();
+  closeMetricActionsMenu();
+  openMetricCommentPopoverCore();
+}
+
+function openMetricCommentPopoverCore() {
+  if (!activeMetricTarget) return;
+  const { rowIndex, metricIndex } = activeMetricTarget;
+  const metric = conversaoRows[rowIndex].metrics[metricIndex];
 
   const popover = document.getElementById('metric-comment-popover');
   const input = document.getElementById('metric-comment-input');
   const removeBtn = document.getElementById('metric-comment-remove');
   if (!popover || !input || !removeBtn) return;
 
-  const metric = conversaoRows[rowIndex].metrics[metricIndex];
   input.value = metric.comment || '';
   removeBtn.style.display = metric.comment ? 'inline' : 'none';
-
-  const rect = event.currentTarget.getBoundingClientRect();
   popover.style.display = 'block';
-  const popoverWidth = 260;
-  let left = rect.left + (rect.width / 2) - (popoverWidth / 2);
-  if (left < 8) left = 8;
-  if (left + popoverWidth > window.innerWidth - 8) left = window.innerWidth - popoverWidth - 8;
-  popover.style.top = `${rect.bottom + 6}px`;
-  popover.style.left = `${left}px`;
-
+  positionFloatingPanel(popover, 260);
   input.focus();
 }
 
 function closeMetricCommentPopover() {
   const popover = document.getElementById('metric-comment-popover');
   if (popover) popover.style.display = 'none';
-  activeMetricCommentTarget = null;
 }
 
 function saveMetricComment() {
-  if (!activeMetricCommentTarget) return;
-  const { rowIndex, metricIndex } = activeMetricCommentTarget;
+  if (!activeMetricTarget) return;
+  const { rowIndex, metricIndex } = activeMetricTarget;
   const text = document.getElementById('metric-comment-input').value.trim();
 
   if (text) conversaoRows[rowIndex].metrics[metricIndex].comment = text;
@@ -3755,8 +3904,8 @@ function saveMetricComment() {
 }
 
 function removeMetricComment() {
-  if (!activeMetricCommentTarget) return;
-  const { rowIndex, metricIndex } = activeMetricCommentTarget;
+  if (!activeMetricTarget) return;
+  const { rowIndex, metricIndex } = activeMetricTarget;
   delete conversaoRows[rowIndex].metrics[metricIndex].comment;
 
   saveMatrixStructure(clientSlugFromName(currentClient), currentAnalysisId, conversaoRows);
@@ -3765,8 +3914,16 @@ function removeMetricComment() {
 }
 
 document.addEventListener('click', function(event) {
-  const popover = document.getElementById('metric-comment-popover');
-  if (popover && popover.style.display !== 'none' && !popover.contains(event.target) && !event.target.classList.contains('metric-comment-icon')) {
+  const menu = document.getElementById('metric-actions-menu');
+  if (menu && menu.style.display !== 'none' && !menu.contains(event.target) && !event.target.classList.contains('metric-actions-icon')) {
+    closeMetricActionsMenu();
+  }
+  const metaPopover = document.getElementById('metric-meta-popover');
+  if (metaPopover && metaPopover.style.display !== 'none' && !metaPopover.contains(event.target) && !event.target.classList.contains('metric-actions-icon')) {
+    closeMetricMetaPopover();
+  }
+  const commentPopover = document.getElementById('metric-comment-popover');
+  if (commentPopover && commentPopover.style.display !== 'none' && !commentPopover.contains(event.target) && !event.target.classList.contains('metric-actions-icon') && !event.target.classList.contains('metric-comment-icon')) {
     closeMetricCommentPopover();
   }
 });
@@ -4780,18 +4937,28 @@ function renderConversaoMatrix(dynamicValues) {
         }
         cell.appendChild(metaSpan);
 
-        // Comentário do analista — só existe nesta tela (matriz de
-        // métricas das análises). Ícone discreto: opaco quando já tem
-        // comentário, apagado quando ainda não tem nenhum.
+        // Ações por métrica: ⋮ sempre visível (editar meta / comentário) —
+        // o 💬 só aparece quando essa métrica já tem comentário salvo.
         cell.style.position = 'relative';
-        const commentBtn = document.createElement('button');
-        commentBtn.type = 'button';
-        commentBtn.className = 'metric-comment-icon';
-        commentBtn.title = metric.comment ? 'Ver/editar comentário do analista' : 'Adicionar comentário do analista';
-        commentBtn.innerText = '💬';
-        commentBtn.style.cssText = `position:absolute; top:-6px; right:2px; background:none; border:none; cursor:pointer; font-size:11px; line-height:1; padding:2px; opacity:${metric.comment ? '1' : '0.3'};`;
-        commentBtn.onclick = (e) => openMetricCommentPopover(e, rowIndex, metricIndex);
-        cell.appendChild(commentBtn);
+        const actionsBtn = document.createElement('button');
+        actionsBtn.type = 'button';
+        actionsBtn.className = 'metric-actions-icon';
+        actionsBtn.title = 'Editar meta ou comentário desta métrica';
+        actionsBtn.innerText = '⋮';
+        actionsBtn.style.cssText = `position:absolute; top:-8px; right:${metric.comment ? '16px' : '2px'}; background:none; border:none; cursor:pointer; font-size:12px; line-height:1; padding:2px 4px; color:var(--text-secondary); opacity:0.5;`;
+        actionsBtn.onclick = (e) => openMetricActionsMenu(e, rowIndex, metricIndex);
+        cell.appendChild(actionsBtn);
+
+        if (metric.comment) {
+          const commentBadge = document.createElement('button');
+          commentBadge.type = 'button';
+          commentBadge.className = 'metric-comment-icon';
+          commentBadge.title = 'Ver/editar comentário do analista';
+          commentBadge.innerText = '💬';
+          commentBadge.style.cssText = 'position:absolute; top:-8px; right:2px; background:none; border:none; cursor:pointer; font-size:11px; line-height:1; padding:2px;';
+          commentBadge.onclick = (e) => openMetricCommentPopoverDirect(e, rowIndex, metricIndex);
+          cell.appendChild(commentBadge);
+        }
 
         cellsWrapper.appendChild(cell);
 
@@ -7345,12 +7512,22 @@ function buildAssistantContext() {
     if (byStatus.attention.length) lines.push(`Clientes em status ATENÇÃO: ${byStatus.attention.join(', ')}.`);
     if (byStatus.healthy.length) lines.push(`Clientes em status SAUDÁVEL: ${byStatus.healthy.join(', ')}.`);
 
+    // Score de Saúde (0-100) de cada cliente — mesma fonte que calcula o
+    // status acima, só que como número, pra IA responder "qual a saúde do
+    // cliente X" ou comparar vários de uma vez.
+    const withScore = allClients.filter(c => typeof c.healthScore === 'number');
+    if (withScore.length) {
+      lines.push(`Score de Saúde (0-100) por cliente: ${withScore.map(c => `${c.name}: ${c.healthScore}/100`).join('; ')}.`);
+    }
+
     // Motivos específicos de cada cliente em atenção/crítico (calculados a
     // partir dos dados reais: ROI, ausência de conversão, metas não
-    // batidas) — pra IA saber explicar exatamente por que quando perguntado.
+    // batidas, tendência mês a mês, atualização de dados, campos pendentes)
+    // — pra IA saber explicar exatamente por que quando perguntado.
     allClients.forEach(c => {
-      if ((c.status === 'attention' || c.status === 'critical') && Array.isArray(c.statusReasons) && c.statusReasons.length) {
-        lines.push(`Por que ${c.name} está em ${c.status === 'critical' ? 'CRÍTICO' : 'ATENÇÃO'}: ${c.statusReasons.join(' ')}`);
+      const reasonTexts = (Array.isArray(c.statusReasons) ? c.statusReasons : []).map(r => (r && typeof r === 'object') ? r.text : r);
+      if ((c.status === 'attention' || c.status === 'critical') && reasonTexts.length) {
+        lines.push(`Por que ${c.name} está em ${c.status === 'critical' ? 'CRÍTICO' : 'ATENÇÃO'} (score ${c.healthScore}/100): ${reasonTexts.join(' ')}`);
       }
     });
   }
@@ -7493,6 +7670,7 @@ function renderClientesDropdownList(list = allClients) {
       <div class="dropdown-client-left">
         <span class="status-dot ${c.status}"></span>
         <span>${c.name}</span>
+        ${typeof c.healthScore === 'number' ? `<span class="sidebar-health-score">${c.healthScore}</span>` : ''}
       </div>
       <span class="dropdown-status-badge ${c.status}">${statusLabel(c.status)}</span>
     `;
@@ -7527,12 +7705,28 @@ function renderSidebarClients() {
         <div class="client-name-wrapper">
           <span class="status-dot ${c.status}"></span>
           <span>${c.name}</span>
+          <span class="sidebar-health-score" id="sidebar-health-score-${c.slug}" title="Score de saúde do cliente">${typeof c.healthScore === 'number' ? c.healthScore : ''}</span>
         </div>
         <span class="client-chevron" id="chevron-${c.slug}">▼</span>
       </div>
       <ul class="analysis-menu" id="analysis-menu-${c.slug}" style="display: none;"></ul>
     `;
     list.appendChild(li);
+  });
+}
+
+// Atualiza só o número do score (e a cor do pontinho de status) de cada
+// cliente já renderizado na sidebar, sem recriar a lista inteira — evita
+// perder o estado de expandido/colapsado dos clientes ao atualizar o score
+// toda vez que o Dashboard Pai recarrega.
+function updateSidebarHealthScores() {
+  allClients.forEach(c => {
+    const scoreEl = document.getElementById(`sidebar-health-score-${c.slug}`);
+    if (scoreEl) scoreEl.innerText = typeof c.healthScore === 'number' ? c.healthScore : '';
+
+    const item = document.getElementById(`sidebar-client-${c.slug}`);
+    const dot = item ? item.querySelector('.status-dot') : null;
+    if (dot) dot.className = `status-dot ${c.status}`;
   });
 }
 

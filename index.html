@@ -369,8 +369,9 @@
         
         <!-- SAÚDE DA CARTEIRA -->
         <section class="section-container" id="health-section">
-          <div class="section-heading-wrapper">
+          <div class="section-heading-wrapper" style="align-items: center;">
             <h2 class="section-heading">Saúde da carteira</h2>
+            <span style="font-size: 11px; color: var(--text-secondary);">Score médio: <strong id="health-avg-score" style="color: var(--text-primary);">—</strong>/100</span>
           </div>
 
           <div class="health-row">
@@ -1100,8 +1101,25 @@
           </div>
         </section>
 
+        <!-- Ações por métrica: o ⋮ de cada célula abre este menu (editar
+             meta / comentário) — só existe nesta tela (matriz de métricas). -->
+        <div id="metric-actions-menu" style="display:none; position: fixed; z-index: 3000; width: 170px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); box-shadow: 0 8px 20px rgba(0,0,0,0.5); padding: 4px 0; flex-direction: column;">
+          <span class="dropdown-item" style="font-size: 11px; padding: 8px 14px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openMetricMetaPopoverFromMenu()">Editar meta</span>
+          <span class="dropdown-item" id="metric-actions-comment-item" style="font-size: 11px; padding: 8px 14px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openMetricCommentPopoverFromMenu()">Adicionar comentário</span>
+        </div>
+
+        <!-- Editar meta de uma métrica -->
+        <div id="metric-meta-popover" style="display:none; position: fixed; z-index: 3000; width: 220px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 12px;">
+          <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">Editar meta</div>
+          <input type="text" id="metric-meta-input" placeholder="Ex: 80,00" style="width: 100%; font-size: 12px; padding: 8px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); font-family: var(--font-family-body); box-sizing: border-box;">
+          <div style="display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px;">
+            <button class="filter-btn" style="height: 26px; font-size: 11px; padding: 0 12px;" onclick="closeMetricMetaPopover()">Cancelar</button>
+            <button class="pink-btn" style="height: 26px; font-size: 11px; padding: 0 14px;" onclick="saveMetricMeta()">Salvar</button>
+          </div>
+        </div>
+
         <!-- Comentário do analista: popover único, reposicionado via JS perto
-             do 💬 clicado — só existe nesta tela (matriz de métricas). -->
+             do controle clicado — só existe nesta tela (matriz de métricas). -->
         <div id="metric-comment-popover" style="display:none; position: fixed; z-index: 3000; width: 260px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-md); box-shadow: 0 12px 32px rgba(0,0,0,0.5); padding: 12px;">
           <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px;">Comentário do analista</div>
           <textarea id="metric-comment-input" rows="3" placeholder="Ex: CPA subiu porque aumentamos investimento em campanha de teste." style="width: 100%; font-size: 12px; padding: 8px; background: var(--bg-app); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); color: var(--text-primary); font-family: var(--font-family-body); resize: vertical; box-sizing: border-box;"></textarea>
