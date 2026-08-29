@@ -7734,7 +7734,6 @@ function renderSidebarClients() {
         <div class="client-name-wrapper">
           <span class="status-dot ${c.status}"></span>
           <span>${c.name}</span>
-          <span class="sidebar-health-score" id="sidebar-health-score-${c.slug}" title="Score de saúde do cliente">${typeof c.healthScore === 'number' ? c.healthScore : ''}</span>
         </div>
         <span class="client-chevron" id="chevron-${c.slug}">▼</span>
       </div>
@@ -7744,15 +7743,13 @@ function renderSidebarClients() {
   });
 }
 
-// Atualiza só o número do score (e a cor do pontinho de status) de cada
-// cliente já renderizado na sidebar, sem recriar a lista inteira — evita
-// perder o estado de expandido/colapsado dos clientes ao atualizar o score
-// toda vez que o Dashboard Pai recarrega.
+// Atualiza a cor do pontinho de status de cada cliente já renderizado na
+// sidebar, sem recriar a lista inteira — evita perder o estado de
+// expandido/colapsado dos clientes ao atualizar toda vez que o Dashboard
+// Pai recarrega. O número do score não aparece mais aqui (só nos cards de
+// atenção, na Saúde da carteira e pro Assistente de IA) — a pedido do usuário.
 function updateSidebarHealthScores() {
   allClients.forEach(c => {
-    const scoreEl = document.getElementById(`sidebar-health-score-${c.slug}`);
-    if (scoreEl) scoreEl.innerText = typeof c.healthScore === 'number' ? c.healthScore : '';
-
     const item = document.getElementById(`sidebar-client-${c.slug}`);
     const dot = item ? item.querySelector('.status-dot') : null;
     if (dot) dot.className = `status-dot ${c.status}`;
