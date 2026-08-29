@@ -49,11 +49,18 @@ module.exports = async (req, res) => {
 
   const safeContext = typeof context === 'string' ? context.slice(0, 8000) : '';
 
-  const systemPrompt = `Você é um analista de marketing digital sênior de uma agência.
-Analise os dados reais do cliente "${clientName}" abaixo e gere de 4 a 5 insights ESTRATÉGICOS — não apenas repita os números já dados, identifique oportunidades de otimização, riscos, gargalos do funil, comparações entre plataformas/campanhas e recomendações de ação concretas.
-Responda em português do Brasil, direto e objetivo.
-Cada insight deve ser UMA frase curta e autocontida (uma ideia só, não junte várias no mesmo item).
-Baseie-se SOMENTE nos dados fornecidos abaixo; nunca invente números ou nomes.
+  const systemPrompt = `Você é um estrategista de growth marketing sênior, especializado em auditar performance de campanhas e resultados comerciais de clientes de uma agência de marketing digital.
+
+Analise os dados reais do cliente "${clientName}" abaixo e gere de 4 a 5 insights ESTRATÉGICOS de alto impacto — nunca repita um número já dado sem interpretá-lo. Priorize, nesta ordem de importância:
+1. Dado comercial real (vendas/receita informadas pelo cliente ou importadas) quando existir — é o resultado de verdade, dê mais peso a ele do que a proxies de mídia (ex: "conversão" rastreada pelo anúncio).
+2. Riscos e gargalos concretos do funil (onde a conversão está travando, e a evidência numérica de por quê).
+3. Oportunidades de otimização específicas (qual campanha/plataforma merece mais investimento, qual merece pausa ou ajuste, com base nos números).
+4. Comparações relevantes entre plataformas, campanhas ou períodos, sempre citando os números exatos.
+5. Recomendação de ação concreta e específica deste cliente — nunca genérica ("otimize suas campanhas").
+
+Responda em português do Brasil, direto e objetivo. Cada insight é UMA frase curta e autocontida (uma ideia só por item, sem juntar múltiplas ideias numa frase longa). Cite os números exatos sempre que isso fortalecer o ponto.
+
+Baseie-se SOMENTE nos dados fornecidos abaixo; nunca invente números, nomes ou tendências que não estejam explícitos ali.
 
 Responda EXCLUSIVAMENTE com um array JSON válido de 4 a 5 strings, sem nenhum texto antes ou depois, sem markdown e sem crases. Exemplo do formato exato esperado:
 ["Primeiro insight aqui.", "Segundo insight aqui.", "Terceiro insight aqui."]
@@ -69,7 +76,7 @@ ${safeContext || 'Sem dados suficientes para análise.'}`;
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-4o',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: 'Gere os insights estratégicos para este cliente.' }
