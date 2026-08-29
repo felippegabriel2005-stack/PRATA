@@ -41,12 +41,12 @@ async function fetchClients() {
   return data;
 }
 
-async function insertClient(name, status) {
+async function insertClient(name, status, segment) {
   const slug = slugify(name);
   const position = allClients.length;
   const { data, error } = await supabaseClient
     .from('clients')
-    .insert({ slug, name, status, pinned: true, position })
+    .insert({ slug, name, status, segment: segment || null, pinned: true, position })
     .select()
     .single();
   if (error) { console.error('Erro ao criar cliente', error); return null; }
@@ -6224,6 +6224,7 @@ async function openCustomFieldsModal() {
   document.getElementById('custom-fields-client-label').innerText = `Defina quais informações ${currentClient} precisa preencher`;
   document.getElementById('custom-fields-modal').style.display = 'flex';
   await loadCustomFieldsForClient(currentClient);
+  populateClientSegmentPicker();
 }
 
 function closeCustomFieldsModal() {
@@ -6440,6 +6441,221 @@ async function handleCustomFieldMappingChange() {
     : formatCurrency(rows.reduce((s, l) => s + (Number(l.revenue) || Number(l.sale_value) || 0), 0));
   banner.innerText = `📊 Encontramos ${countText} em ${label.toLowerCase()} histórica importada pra ${currentClient} — já visível no Dashboard, com ou sem este campo. Este campo será usado só pra continuar alimentando essa mesma métrica pelo portal, a partir de agora.`;
   banner.style.display = 'block';
+}
+
+// --------------------------------------------------
+// Configuração inteligente de campos solicitados: a agência escolhe o
+// segmento do cliente (picklist, pra nunca depender de bater texto livre) e
+// o PRATA sugere um pacote pronto de campos pra aquele tipo de negócio —
+// "Adicionar selecionados" cria todos de uma vez, com tipo/frequência/
+// mapeamento já configurados. É só um ponto de partida: a agência pode
+// editar ou apagar qualquer um deles depois, igual um campo criado manual.
+const SEGMENT_FIELD_TEMPLATES = {
+  'Clínico/Saúde': [
+    { name: 'Agendamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'agendamentos' },
+    { name: 'Comparecimentos', field_type: 'number', frequency: 'daily', metric_mapping: 'service', unit: 'comparecimentos' },
+    { name: 'Procedimentos fechados', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'procedimentos' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Cancelamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' }
+  ],
+  'Odontologia': [
+    { name: 'Agendamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'agendamentos' },
+    { name: 'Comparecimentos', field_type: 'number', frequency: 'daily', metric_mapping: 'service', unit: 'comparecimentos' },
+    { name: 'Orçamentos fechados', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'orçamentos' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Cancelamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' }
+  ],
+  'Estética/Fitness': [
+    { name: 'Agendamentos/Aulas experimentais', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'agendamentos' },
+    { name: 'Matrículas/Planos fechados', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'matrículas' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Cancelamentos/Trancamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' },
+    { name: 'Renovações', field_type: 'number', frequency: 'monthly', metric_mapping: 'custom_metric', unit: 'renovações' }
+  ],
+  'Imobiliário': [
+    { name: 'Visitas agendadas', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'visitas' },
+    { name: 'Propostas', field_type: 'number', frequency: 'daily', metric_mapping: 'proposals', unit: 'propostas' },
+    { name: 'Vendas/Locações fechadas', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'negócios' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Motivo de desqualificação de leads', field_type: 'single_select', frequency: 'on_demand', metric_mapping: 'disqualification_reason', required: false, options: ['Fora do perfil', 'Sem orçamento', 'Não é decisor', 'Sem resposta'] }
+  ],
+  'Advocacia': [
+    { name: 'Consultas agendadas', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'consultas' },
+    { name: 'Contratos fechados', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'contratos' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Cancelamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' },
+    { name: 'Motivo de desqualificação de leads', field_type: 'single_select', frequency: 'on_demand', metric_mapping: 'disqualification_reason', required: false, options: ['Sem orçamento', 'Fora da área de atuação', 'Não é decisor', 'Desistiu'] }
+  ],
+  'Educação': [
+    { name: 'Matrículas fechadas', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'matrículas' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Aulas experimentais realizadas', field_type: 'number', frequency: 'daily', metric_mapping: 'service', unit: 'aulas' },
+    { name: 'Cancelamentos/Evasão', field_type: 'number', frequency: 'monthly', metric_mapping: 'cancellations', unit: 'cancelamentos' }
+  ],
+  'E-commerce/Varejo': [
+    { name: 'Vendas', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'vendas' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Pedidos cancelados/devolvidos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'pedidos' }
+  ],
+  'Alimentação/Restaurantes': [
+    { name: 'Reservas', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'reservas' },
+    { name: 'Comparecimentos', field_type: 'number', frequency: 'daily', metric_mapping: 'service', unit: 'comparecimentos' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Cancelamentos/No-show', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' }
+  ],
+  'Automotivo': [
+    { name: 'Test-drives agendados', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'test-drives' },
+    { name: 'Vendas fechadas', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'vendas' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Motivo de desqualificação de leads', field_type: 'single_select', frequency: 'on_demand', metric_mapping: 'disqualification_reason', required: false, options: ['Sem orçamento', 'Já comprou em outro lugar', 'Não é decisor', 'Sem resposta'] }
+  ],
+  'Tecnologia/SaaS B2B': [
+    { name: 'Reuniões agendadas', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'reuniões' },
+    { name: 'Propostas enviadas', field_type: 'number', frequency: 'daily', metric_mapping: 'proposals', unit: 'propostas' },
+    { name: 'Contratos fechados', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'contratos' },
+    { name: 'Faturamento/MRR', field_type: 'currency', frequency: 'monthly', metric_mapping: 'revenue' },
+    { name: 'Motivo de desqualificação de leads', field_type: 'single_select', frequency: 'on_demand', metric_mapping: 'disqualification_reason', required: false, options: ['Sem orçamento', 'Não é decisor', 'Fit ruim', 'Concorrente', 'Sem resposta'] }
+  ],
+  'Agronegócio': [
+    { name: 'Propostas', field_type: 'number', frequency: 'daily', metric_mapping: 'proposals', unit: 'propostas' },
+    { name: 'Vendas fechadas', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'vendas' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Cancelamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' }
+  ],
+  'Outro': [
+    { name: 'Vendas', field_type: 'number', frequency: 'daily', metric_mapping: 'sales', unit: 'vendas' },
+    { name: 'Faturamento', field_type: 'currency', frequency: 'daily', metric_mapping: 'revenue' },
+    { name: 'Agendamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'appointments', unit: 'agendamentos' },
+    { name: 'Cancelamentos', field_type: 'number', frequency: 'daily', metric_mapping: 'cancellations', unit: 'cancelamentos' },
+    { name: 'Motivo de desqualificação de leads', field_type: 'single_select', frequency: 'on_demand', metric_mapping: 'disqualification_reason', required: false, options: ['Sem orçamento', 'Não é decisor', 'Sem resposta', 'Outro'] }
+  ]
+};
+
+// Preenche o select de segmento com o valor atual do cliente (allClients já
+// tem `segment`, carregado direto de clients.segment) e mostra as sugestões
+// pra esse segmento, se houver.
+function populateClientSegmentPicker() {
+  const select = document.getElementById('cf-client-segment-select');
+  if (!select || !currentClient) return;
+
+  const segments = Object.keys(SEGMENT_FIELD_TEMPLATES);
+  select.innerHTML = '<option value="">Selecione o segmento...</option>' + segments.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+
+  const client = allClients.find(c => c.name === currentClient);
+  select.value = (client && segments.includes(client.segment)) ? client.segment : '';
+
+  renderSegmentSuggestions();
+}
+
+// Ao trocar o segmento no picklist, salva direto em clients.segment — não é
+// só um filtro visual, vira o dado real do cliente (mesmo campo que a
+// importação de planilha já usa).
+async function handleClientSegmentChange() {
+  const select = document.getElementById('cf-client-segment-select');
+  const newSegment = select.value;
+  const slug = clientSlugFromName(currentClient) || slugify(currentClient);
+
+  const { error } = await supabaseClient.from('clients').update({ segment: newSegment || null }).eq('slug', slug);
+  if (error) {
+    console.error('Erro ao salvar segmento do cliente', error);
+  } else {
+    const client = allClients.find(c => c.name === currentClient);
+    if (client) client.segment = newSegment;
+  }
+
+  renderSegmentSuggestions();
+}
+
+function renderSegmentSuggestions() {
+  const select = document.getElementById('cf-client-segment-select');
+  const suggestionsWrap = document.getElementById('cf-segment-suggestions');
+  const emptyEl = document.getElementById('cf-segment-no-suggestions');
+  const listEl = document.getElementById('cf-segment-suggestions-list');
+  if (!select || !suggestionsWrap || !emptyEl || !listEl) return;
+
+  const segment = select.value;
+  const templates = SEGMENT_FIELD_TEMPLATES[segment];
+
+  if (!segment) {
+    suggestionsWrap.style.display = 'none';
+    emptyEl.style.display = 'none';
+    return;
+  }
+  if (!templates) {
+    suggestionsWrap.style.display = 'none';
+    emptyEl.style.display = 'block';
+    emptyEl.innerText = 'Sem sugestões prontas pra esse segmento ainda.';
+    return;
+  }
+
+  // Não sugere de novo um campo que já existe pra esse cliente (por nome).
+  const existingNames = new Set(activeCustomFields.map(f => f.name.trim().toLowerCase()));
+  const newOnes = templates.filter(t => !existingNames.has(t.name.trim().toLowerCase()));
+
+  if (!newOnes.length) {
+    suggestionsWrap.style.display = 'none';
+    emptyEl.style.display = 'block';
+    emptyEl.innerText = 'Esse cliente já tem todos os campos recomendados pra esse segmento.';
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  suggestionsWrap.style.display = 'block';
+  listEl.innerHTML = newOnes.map(t => `
+    <label style="display:flex; align-items:center; gap:8px; font-size:12px; padding:3px 0; cursor:pointer;">
+      <input type="checkbox" checked data-suggestion-name="${escapeHtml(t.name)}">
+      <span>${escapeHtml(t.name)} <span style="color:var(--text-muted); font-size:10px;">(${CUSTOM_FIELD_FREQUENCY_LABELS[t.frequency] || t.frequency})</span></span>
+    </label>
+  `).join('');
+}
+
+// "Adicionar selecionados": cria de uma vez todos os campos marcados,
+// aproveitando o mesmo formato de payload que o formulário manual já salva
+// (saveCustomField) — nada de especial na tabela, é o mesmo custom_fields.
+async function addRecommendedFields() {
+  const select = document.getElementById('cf-client-segment-select');
+  const segment = select ? select.value : '';
+  const templates = SEGMENT_FIELD_TEMPLATES[segment] || [];
+  if (!templates.length || !currentClient) return;
+
+  const checkedNames = new Set([...document.querySelectorAll('#cf-segment-suggestions-list input[type=checkbox]:checked')].map(cb => cb.dataset.suggestionName));
+  const toAdd = templates.filter(t => checkedNames.has(t.name));
+  if (!toAdd.length) {
+    showToast('Selecione ao menos um campo pra adicionar.');
+    return;
+  }
+
+  const slug = clientSlugFromName(currentClient) || slugify(currentClient);
+  const { data: userData } = await supabaseClient.auth.getUser();
+  const createdBy = userData && userData.user ? userData.user.email : null;
+  const basePosition = activeCustomFields.length;
+
+  const payloads = toAdd.map((t, i) => ({
+    client_slug: slug,
+    name: t.name,
+    description: t.description || null,
+    field_type: t.field_type,
+    options: t.options || null,
+    frequency: t.frequency,
+    required: t.required !== undefined ? t.required : true,
+    category: t.category || null,
+    unit: t.unit || null,
+    metric_mapping: t.metric_mapping || 'none',
+    active: true,
+    position: basePosition + i,
+    created_by: createdBy
+  }));
+
+  const { error } = await supabaseClient.from('custom_fields').insert(payloads);
+  if (error) {
+    console.error('Erro ao adicionar campos recomendados', error);
+    showToast('Não foi possível adicionar os campos recomendados.');
+    return;
+  }
+
+  showToast(`${toAdd.length} campo(s) adicionado(s) com sucesso!`);
+  await loadCustomFieldsForClient(currentClient);
+  renderSegmentSuggestions();
 }
 
 function addCustomFieldOption() {
@@ -7236,6 +7452,11 @@ function renderSidebarClients() {
 }
 
 function openClienteModal() {
+  const segmentSelect = document.getElementById('cliente-segment');
+  if (segmentSelect) {
+    const segments = Object.keys(SEGMENT_FIELD_TEMPLATES);
+    segmentSelect.innerHTML = '<option value="">Selecione o segmento...</option>' + segments.map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+  }
   document.getElementById('cliente-modal').style.display = 'flex';
 }
 
@@ -7249,9 +7470,10 @@ async function saveNovoCliente(event) {
 
   const name = document.getElementById('cliente-name').value.trim();
   const status = document.getElementById('cliente-status').value;
+  const segment = document.getElementById('cliente-segment').value;
   if (!name) return;
 
-  const created = await insertClient(name, status);
+  const created = await insertClient(name, status, segment);
   if (!created) {
     showToast('Não foi possível criar o cliente.');
     return;

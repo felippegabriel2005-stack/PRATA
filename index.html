@@ -1914,6 +1914,23 @@
         <button class="modal-close-btn" onclick="closeCustomFieldsModal()">&times;</button>
       </div>
 
+      <!-- Configuração inteligente: escolhe o segmento do cliente e recebe
+           uma sugestão pronta de campos pra pedir, em vez de montar do zero. -->
+      <div style="border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 12px 14px; margin-bottom: 14px; background: rgba(139, 92, 246, 0.04);">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <label class="form-label" for="cf-client-segment-select" style="margin-bottom: 0; white-space: nowrap;">Segmento deste cliente:</label>
+          <select id="cf-client-segment-select" class="form-select" style="height: 30px; font-size: 11px; max-width: 240px;" onchange="handleClientSegmentChange()">
+            <option value="">Selecione o segmento...</option>
+          </select>
+        </div>
+        <div id="cf-segment-suggestions" style="display: none; margin-top: 10px;">
+          <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">Campos recomendados pra esse segmento:</div>
+          <div id="cf-segment-suggestions-list" style="display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px;"></div>
+          <button class="pink-btn" style="height: 30px; font-size: 11px; padding: 0 14px;" onclick="addRecommendedFields()">Adicionar selecionados</button>
+        </div>
+        <div id="cf-segment-no-suggestions" style="display: none; margin-top: 8px; font-size: 11px; color: var(--text-muted);"></div>
+      </div>
+
       <div style="display: flex; justify-content: flex-end;">
         <button class="pink-btn" style="height: 32px; padding: 0 16px; font-size: 12px;" onclick="openCustomFieldForm()">+ Novo campo</button>
       </div>
@@ -2070,6 +2087,13 @@
             <option value="attention">Atenção</option>
             <option value="critical">Crítico</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="cliente-segment">Segmento (opcional)</label>
+          <select id="cliente-segment" class="form-select">
+            <option value="">Selecione o segmento...</option>
+          </select>
+          <span style="font-size: 10px; color: var(--text-secondary); display: block; margin-top: 4px;">Pode ser definido/alterado depois também, em "Solicitar dados" — é o que ativa as sugestões de campos por tipo de negócio.</span>
         </div>
         <div class="modal-footer">
           <button type="button" class="form-btn-secondary" onclick="closeClienteModal()">Cancelar</button>
