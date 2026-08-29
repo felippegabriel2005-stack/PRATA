@@ -1104,8 +1104,8 @@
         <!-- Ações por métrica: o ⋮ de cada célula abre este menu (editar
              meta / comentário) — só existe nesta tela (matriz de métricas). -->
         <div id="metric-actions-menu" style="display:none; position: fixed; z-index: 3000; width: 170px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); box-shadow: 0 8px 20px rgba(0,0,0,0.5); padding: 4px 0; flex-direction: column;">
-          <span class="dropdown-item" style="font-size: 11px; padding: 8px 14px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openMetricMetaPopoverFromMenu()">Editar meta</span>
-          <span class="dropdown-item" id="metric-actions-comment-item" style="font-size: 11px; padding: 8px 14px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openMetricCommentPopoverFromMenu()">Adicionar comentário</span>
+          <span class="dropdown-item" style="font-size: 11px; padding: 8px 14px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openMetricMetaPopoverFromMenu(event)">Editar meta</span>
+          <span class="dropdown-item" id="metric-actions-comment-item" style="font-size: 11px; padding: 8px 14px; color: var(--text-primary); cursor: pointer; display: block;" onclick="openMetricCommentPopoverFromMenu(event)">Adicionar comentário</span>
         </div>
 
         <!-- Editar meta de uma métrica -->

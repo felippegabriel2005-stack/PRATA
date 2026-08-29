@@ -3845,7 +3845,11 @@ function closeMetricActionsMenu() {
   if (menu) menu.style.display = 'none';
 }
 
-function openMetricMetaPopoverFromMenu() {
+function openMetricMetaPopoverFromMenu(event) {
+  // Sem isso, o clique continua borbulhando até o listener de "fechar ao
+  // clicar fora" no document, que via o popover recém-aberto como um
+  // clique "de fora" e fechava ele de volta no mesmo clique.
+  if (event) event.stopPropagation();
   closeMetricActionsMenu();
   if (!activeMetricTarget) return;
   const { rowIndex, metricIndex } = activeMetricTarget;
@@ -3883,7 +3887,8 @@ function saveMetricMeta() {
   updateConversaoMetrics();
 }
 
-function openMetricCommentPopoverFromMenu() {
+function openMetricCommentPopoverFromMenu(event) {
+  if (event) event.stopPropagation();
   closeMetricActionsMenu();
   openMetricCommentPopoverCore();
 }
@@ -4837,14 +4842,39 @@ function renderConversaoMatrix(dynamicValues) {
         cell.style.flexGrow = '1';
         cell.style.flexBasis = '0';
 
-        // Title
+        // Title + ações da métrica (⋮ sempre, 💬 só quando já tem
+        // comentário salvo) lado a lado, dentro do fluxo normal da célula
+        // — evita qualquer sobreposição entre células vizinhas.
+        const titleRow = document.createElement('div');
+        titleRow.style.cssText = 'display:flex; align-items:center; justify-content:center; gap:4px; margin-bottom:4px;';
+
         const titleSpan = document.createElement('span');
         titleSpan.className = 'card-title';
         titleSpan.style.fontSize = '9px';
-        titleSpan.style.display = 'block';
-        titleSpan.style.marginBottom = '4px';
         titleSpan.innerText = metric.name;
-        cell.appendChild(titleSpan);
+        titleRow.appendChild(titleSpan);
+
+        const actionsBtn = document.createElement('button');
+        actionsBtn.type = 'button';
+        actionsBtn.className = 'metric-actions-icon';
+        actionsBtn.title = 'Editar meta ou comentário desta métrica';
+        actionsBtn.innerText = '⋮';
+        actionsBtn.style.cssText = 'background:none; border:none; cursor:pointer; font-size:12px; line-height:1; padding:1px 2px; color:var(--text-secondary); opacity:0.5;';
+        actionsBtn.onclick = (e) => openMetricActionsMenu(e, rowIndex, metricIndex);
+        titleRow.appendChild(actionsBtn);
+
+        if (metric.comment) {
+          const commentBadge = document.createElement('button');
+          commentBadge.type = 'button';
+          commentBadge.className = 'metric-comment-icon';
+          commentBadge.title = 'Ver/editar comentário do analista';
+          commentBadge.innerText = '💬';
+          commentBadge.style.cssText = 'background:none; border:none; cursor:pointer; font-size:10px; line-height:1; padding:1px 2px;';
+          commentBadge.onclick = (e) => openMetricCommentPopoverDirect(e, rowIndex, metricIndex);
+          titleRow.appendChild(commentBadge);
+        }
+
+        cell.appendChild(titleRow);
 
         // Get value
         let valNumeric = 0;
@@ -4965,29 +4995,6 @@ function renderConversaoMatrix(dynamicValues) {
           valDiv.style.color = 'var(--text-primary)';
         }
         cell.appendChild(metaSpan);
-
-        // Ações por métrica: ⋮ sempre visível (editar meta / comentário) —
-        // o 💬 só aparece quando essa métrica já tem comentário salvo.
-        cell.style.position = 'relative';
-        const actionsBtn = document.createElement('button');
-        actionsBtn.type = 'button';
-        actionsBtn.className = 'metric-actions-icon';
-        actionsBtn.title = 'Editar meta ou comentário desta métrica';
-        actionsBtn.innerText = '⋮';
-        actionsBtn.style.cssText = `position:absolute; top:-8px; right:${metric.comment ? '16px' : '2px'}; background:none; border:none; cursor:pointer; font-size:12px; line-height:1; padding:2px 4px; color:var(--text-secondary); opacity:0.5;`;
-        actionsBtn.onclick = (e) => openMetricActionsMenu(e, rowIndex, metricIndex);
-        cell.appendChild(actionsBtn);
-
-        if (metric.comment) {
-          const commentBadge = document.createElement('button');
-          commentBadge.type = 'button';
-          commentBadge.className = 'metric-comment-icon';
-          commentBadge.title = 'Ver/editar comentário do analista';
-          commentBadge.innerText = '💬';
-          commentBadge.style.cssText = 'position:absolute; top:-8px; right:2px; background:none; border:none; cursor:pointer; font-size:11px; line-height:1; padding:2px;';
-          commentBadge.onclick = (e) => openMetricCommentPopoverDirect(e, rowIndex, metricIndex);
-          cell.appendChild(commentBadge);
-        }
 
         cellsWrapper.appendChild(cell);
 
