@@ -1752,6 +1752,25 @@ body.light .catalogo-metric-item:hover {
   padding-right: 36px;
 }
 
+/* A lista de opções de um <select> aberto é renderizada pelo sistema
+   operacional/navegador, não pelo CSS da página — sem isso, o fundo fica
+   branco (padrão do SO) com o texto claro que a página define pro select
+   fechado, ficando ilegível (texto claro em fundo claro). Isso cobre
+   QUALQUER <select> do app (form-select, filter-select, report-select, ou
+   sem classe nenhuma), já que option herda do elemento pai por padrão.
+   color-scheme depende do tema ativo (body.light) pra não forçar popup
+   escuro quando o app está no modo claro. */
+select {
+  color-scheme: dark;
+}
+body.light select {
+  color-scheme: light;
+}
+select option {
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;

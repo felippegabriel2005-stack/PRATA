@@ -7497,9 +7497,29 @@ function getCurrentScreenContext() {
         }
       });
     }
+
+    // Se tiver uma comparação mês a mês aplicada (dentro do MESMO cliente),
+    // captura a tabela também — só o navegador sabe que filtro está ativo.
+    const comparisonLines = [];
+    const comparisonSection = document.getElementById('conv-comparison-section');
+    if (comparisonSection && comparisonSection.style.display !== 'none') {
+      const subtitle = document.getElementById('conv-comparison-subtitle');
+      const tbody = document.getElementById('conv-comparison-tbody');
+      if (subtitle) comparisonLines.push(`Comparativo mês a mês ativo: ${subtitle.innerText}`);
+      if (tbody) {
+        tbody.querySelectorAll('tr').forEach(tr => {
+          const cells = [...tr.querySelectorAll('td')].map(td => td.innerText.trim().replace(/\s+/g, ' '));
+          if (cells.length) comparisonLines.push(cells.join(' | '));
+        });
+      }
+    }
+
     return {
       label: `Análise "${currentAnalysis}" do cliente ${currentClient}`,
-      detail: matrixLines.length ? `Valores exibidos nessa tela agora:\n${matrixLines.join('\n')}` : ''
+      detail: [
+        matrixLines.length ? `Valores exibidos nessa tela agora:\n${matrixLines.join('\n')}` : '',
+        comparisonLines.length ? comparisonLines.join('\n') : ''
+      ].filter(Boolean).join('\n\n')
     };
   }
 
@@ -7532,6 +7552,16 @@ function getCurrentScreenContext() {
 // clientes por status, totais da agência, e o cliente em foco se houver)
 // pra IA responder com base no que está realmente importado e no que o
 // usuário está vendo na tela, sem inventar números.
+// Contexto ENXUTO de propósito: só descreve em que TELA/estado visual o
+// usuário está agora (coisa que só o navegador sabe, tipo um filtro
+// aplicado) — nenhum número de cliente vem mais daqui. Antes essa função
+// despejava dados profundos do cliente aberto + um resuminho raso de todo
+// o resto da carteira; ao pedir pra comparar dois clientes, a IA comparava
+// níveis de detalhe diferentes (bug reportado). Agora QUALQUER dado de
+// cliente — o aberto na tela ou qualquer outro — vem das ferramentas do
+// Assistente (get_client_kpis/get_client_deep_dive, em api/assistant.js,
+// que buscam ao vivo no Supabase), sempre no mesmo nível de detalhe pra
+// qualquer cliente pedido.
 function buildAssistantContext() {
   const lines = [];
 
@@ -7539,114 +7569,8 @@ function buildAssistantContext() {
   lines.push(`Tela em que o usuário está agora: ${screen.label}.`);
   if (screen.detail) lines.push(screen.detail);
 
-  lines.push(`Total de clientes cadastrados: ${allClients.length}.`);
-
-  if (allClients.length > 0) {
-    const byStatus = { healthy: [], attention: [], critical: [] };
-    allClients.forEach(c => { if (byStatus[c.status]) byStatus[c.status].push(c.name); });
-    if (byStatus.critical.length) lines.push(`Clientes em status CRÍTICO: ${byStatus.critical.join(', ')}.`);
-    if (byStatus.attention.length) lines.push(`Clientes em status ATENÇÃO: ${byStatus.attention.join(', ')}.`);
-    if (byStatus.healthy.length) lines.push(`Clientes em status SAUDÁVEL: ${byStatus.healthy.join(', ')}.`);
-
-    // Score de Saúde (0-100) de cada cliente — mesma fonte que calcula o
-    // status acima, só que como número, pra IA responder "qual a saúde do
-    // cliente X" ou comparar vários de uma vez.
-    const withScore = allClients.filter(c => typeof c.healthScore === 'number');
-    if (withScore.length) {
-      lines.push(`Score de Saúde (0-100) por cliente: ${withScore.map(c => `${c.name}: ${c.healthScore}/100`).join('; ')}.`);
-    }
-
-    // Motivos específicos de cada cliente em atenção/crítico (calculados a
-    // partir dos dados reais: ROI, ausência de conversão, metas não
-    // batidas, tendência mês a mês, atualização de dados, campos pendentes)
-    // — pra IA saber explicar exatamente por que quando perguntado.
-    allClients.forEach(c => {
-      const reasonTexts = (Array.isArray(c.statusReasons) ? c.statusReasons : []).map(r => (r && typeof r === 'object') ? r.text : r);
-      if ((c.status === 'attention' || c.status === 'critical') && reasonTexts.length) {
-        lines.push(`Por que ${c.name} está em ${c.status === 'critical' ? 'CRÍTICO' : 'ATENÇÃO'} (score ${c.healthScore}/100): ${reasonTexts.join(' ')}`);
-      }
-    });
-  }
-
-  const agency = agencyPeriodData[currentPeriod];
-  if (agency) {
-    lines.push(`Totais da agência no período "${currentPeriod}": Investimento ${agency.investimento}, Receita ${agency.receita}, Vendas ${agency.vendas || '—'}${agency.hasManualSales ? ' (soma inclui vendas reais informadas manualmente por clientes no portal)' : ''}, Taxa de conversão ${agency.conversao}, CPL ${agency.cpl}, CPA ${agency.cpa}, ROI ${agency.roi}.`);
-  }
-
-  if (currentClient && clientDetailedData[currentClient]) {
-    const d = clientDetailedData[currentClient];
-    lines.push(`Totais gerais (dashboard do cliente, todo o período) de ${currentClient}: Investimento ${d.metrics.investimento}, Receita ${d.metrics.receita}, Conversão de mídia (cliques → conversões rastreadas pelos anúncios) ${d.metrics.conversao}, CPL ${d.metrics.cpl}, CPA ${d.metrics.cpa}, ROI ${d.metrics.roi}. (Se a tela atual for uma Análise específica com filtro de campanhas/período, use os valores da seção "Valores exibidos nessa tela agora" acima, que são mais precisos para o que o usuário está vendo.)`);
-
-    // Métricas comerciais informadas manualmente pelo cliente no portal
-    // (vendas, receita, propostas, etc.) — quando existir campo mapeado,
-    // esse é o dado OFICIAL, não o proxy de conversões de mídia acima.
-    // Deixamos isso bem explícito pra IA nunca confundir os dois conceitos.
-    if (d.commercial && Object.keys(d.commercial).length) {
-      const commercialLines = Object.keys(COMMERCIAL_METRIC_LABELS)
-        .filter(t => d.commercial[t])
-        .map(t => {
-          const label = COMMERCIAL_METRIC_LABELS[t];
-          const val = t === 'revenue' ? formatCurrency(d.commercial[t].value) : Math.round(d.commercial[t].value).toLocaleString('pt-BR');
-          const source = (t === 'sales' || t === 'revenue') && d.commercial[t].bySource ? ` [${describeSourceLabel(d.commercial[t].bySource).text}]` : ' [Fonte: Informado pelo cliente]';
-          return `${label}: ${val}${source}`;
-        });
-      lines.push(`DADO OFICIAL (comercial real) de ${currentClient} — não é conversão de mídia: ${commercialLines.join('; ')}.`);
-    }
-    if (d.salesResolved !== null && d.salesResolved !== undefined) {
-      lines.push(`IMPORTANTE: quando perguntarem "quantas vendas" de ${currentClient}, a resposta é ${Math.round(d.salesResolved).toLocaleString('pt-BR')} (vendas reais — importadas e/ou informadas pelo cliente, ver fonte acima) — NÃO confundir com "Conversão"/CPA acima, que são métricas de mídia (rastreadas pelo anúncio, não são vendas confirmadas).`);
-    }
-    if (d.commercialStats) {
-      const s = d.commercialStats;
-      const statParts = [];
-      if (s.custoPorVenda !== null && s.custoPorVenda !== undefined) statParts.push(`Custo por venda: ${formatCurrency(s.custoPorVenda)}`);
-      if (s.taxaLeadVenda !== null && s.taxaLeadVenda !== undefined) statParts.push(`Taxa lead → venda: ${s.taxaLeadVenda.toFixed(1)}%`);
-      if (s.ticketMedio !== null && s.ticketMedio !== undefined) statParts.push(`Ticket médio: ${formatCurrency(s.ticketMedio)}`);
-      if (s.roas !== null && s.roas !== undefined) statParts.push(`ROAS: ${s.roas.toFixed(1)}x`);
-      if (statParts.length) lines.push(`Métricas comerciais derivadas de ${currentClient}: ${statParts.join(', ')}.`);
-    }
-    if (Array.isArray(d.customMetrics) && d.customMetrics.length) {
-      lines.push(`Métricas personalizadas (definidas pela agência) de ${currentClient}: ${d.customMetrics.map(m => `${m.name}: ${Math.round(m.value).toLocaleString('pt-BR')}${m.unit ? ' ' + m.unit : ''}`).join(', ')}.`);
-    }
-
-    // Histórico dia a dia de Vendas/Receita já vem UNIFICADO (histórico
-    // importado de leads_sales + preenchimentos do portal, sem duplicar) em
-    // d.commercial.sales/revenue.records — cada ponto marcado com a origem.
-    ['sales', 'revenue'].forEach(type => {
-      if (!d.commercial || !d.commercial[type] || !Array.isArray(d.commercial[type].records)) return;
-      const entries = d.commercial[type].records.slice(-60);
-      if (!entries.length) return;
-      const label = COMMERCIAL_METRIC_LABELS[type];
-      const points = entries.map(r => `${r.date}: ${r.value}${r.source === 'import' ? ' (importação)' : ' (portal)'}`).join('; ');
-      lines.push(`Histórico por dia de "${label}" de ${currentClient} (importação + portal, sem duplicar): ${points}.`);
-    });
-
-    // Histórico dia a dia (ou por semana/quinzena/mês, conforme a
-    // frequência do campo) das demais métricas comerciais mapeadas
-    // (propostas, agendamentos etc.) — essas só vêm do portal, sem
-    // histórico importado equivalente ainda.
-    if (Array.isArray(d.customFieldsDefs) && d.customFieldsDefs.length && Array.isArray(d.customFieldValuesAll)) {
-      const mappedFields = d.customFieldsDefs.filter(f => f.metric_mapping && f.metric_mapping !== 'none' && f.metric_mapping !== 'sales' && f.metric_mapping !== 'revenue');
-      mappedFields.forEach(field => {
-        const entries = d.customFieldValuesAll
-          .filter(v => v.field_id === field.id)
-          .sort((a, b) => (a.period_date < b.period_date ? 1 : -1))
-          .slice(0, 60);
-        if (!entries.length) return;
-        const label = field.metric_mapping === 'custom_metric' ? field.name : (COMMERCIAL_METRIC_LABELS[field.metric_mapping] || field.name);
-        const points = entries.map(v => `${v.period_date}: ${v.value_number !== null && v.value_number !== undefined ? v.value_number : (v.value_text || '—')}`).join('; ');
-        lines.push(`Histórico por período informado pelo cliente para "${label}" (campo "${field.name}", frequência ${CUSTOM_FIELD_FREQUENCY_LABELS[field.frequency] || field.frequency}): ${points}.`);
-      });
-    }
-    if ((d.commercial && (d.commercial.sales || d.commercial.revenue)) || (d.customFieldsDefs && d.customFieldsDefs.some(f => f.metric_mapping && f.metric_mapping !== 'none'))) {
-      lines.push(`Quando perguntarem sobre um dia/semana/mês específico de ${currentClient} (ex: "e no dia 10?", "e essa semana?"), procure a(s) data(s) correspondente(s) no histórico acima — não responda só com o total geral.`);
-    }
-
-    if (Array.isArray(d.insights) && d.insights.length) {
-      lines.push(`Insights já calculados para ${currentClient}: ${d.insights.join(' ')}`);
-    }
-    if (Array.isArray(d.lossReasons) && d.lossReasons.length) {
-      lines.push(`Motivos de perda de ${currentClient}: ${d.lossReasons.map(r => `${r.name} (${r.pct}%)`).join(', ')}.`);
-    }
+  if (currentClient) {
+    lines.push(`Cliente aberto agora nessa tela: "${currentClient}". Se a pergunta for sobre este cliente, ou pedir para comparar com outro(s), use a ferramenta get_client_kpis (ou get_client_deep_dive, pra análise mais profunda) com o nome exato de CADA cliente envolvido — inclusive este — pra ter dados atualizados e equivalentes entre todos, nunca assuma valores.`);
   }
 
   return lines.join('\n');
@@ -7781,11 +7705,14 @@ async function saveNovoCliente(event) {
   event.preventDefault();
 
   const name = document.getElementById('cliente-name').value.trim();
-  const status = document.getElementById('cliente-status').value;
   const segment = document.getElementById('cliente-segment').value;
   if (!name) return;
 
-  const created = await insertClient(name, status, segment);
+  // Status não é mais escolhido na criação — é calculado automaticamente
+  // pelo Score de Saúde assim que o cliente tiver dado real (campanha
+  // importada, campo personalizado ou venda). 'healthy' aqui é só o valor
+  // inicial no banco até a primeira recomputação real acontecer.
+  const created = await insertClient(name, 'healthy', segment);
   if (!created) {
     showToast('Não foi possível criar o cliente.');
     return;
