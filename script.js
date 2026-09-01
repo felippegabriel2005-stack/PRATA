@@ -10324,6 +10324,44 @@ function showLoginScreen() {
   document.getElementById('login-form').reset();
 }
 
+// ==========================================================================
+// SIDEBAR MOBILE — abaixo de 900px a sidebar vira uma gaveta (off-canvas)
+// aberta pelo botão ☰ da barra superior mobile. Mesmo HTML/CSS/JS do
+// desktop, só a apresentação muda por media query (ver style.css).
+// ==========================================================================
+function toggleMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (!sidebar || !overlay) return;
+  const isOpen = sidebar.classList.toggle('mobile-open');
+  overlay.classList.toggle('mobile-open', isOpen);
+}
+
+function closeMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('mobile-open');
+  if (overlay) overlay.classList.remove('mobile-open');
+}
+
+// Fecha a gaveta sozinha quando o usuário toca em qualquer item de
+// navegação dentro dela (senão o menu ficaria aberto por cima da tela
+// depois de trocar de tela) e também se a janela voltar a ficar larga
+// (ex: girar o celular ou trocar pra um tablet em modo desktop).
+function setupMobileSidebar() {
+  const sidebar = document.querySelector('.sidebar');
+  if (!sidebar) return;
+  sidebar.addEventListener('click', (e) => {
+    if (window.innerWidth > 900) return;
+    const target = e.target.closest('.menu-link, .client-item, .analysis-item, .client-more-link');
+    if (target) closeMobileSidebar();
+  });
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) closeMobileSidebar();
+  });
+}
+setupMobileSidebar();
+
 // Inicializa os dados e telas do PRATA — só roda depois de confirmar que
 // existe uma sessão autenticada (chamada tanto no load com sessão já ativa
 // quanto logo após um login bem-sucedido).

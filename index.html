@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRATA - Revenue Tracking & Intelligence</title>
-  <link rel="stylesheet" href="style.css?v=55">
+  <link rel="stylesheet" href="style.css?v=56">
 </head>
 <body>
   <!-- TELA DE LOGIN -->
@@ -32,7 +32,17 @@
   </div>
 
   <div class="app-container" id="app-container" style="display: none;">
-    
+
+    <!-- BARRA SUPERIOR MOBILE (só aparece em telas pequenas, abre a sidebar como gaveta) -->
+    <div class="mobile-topbar" id="mobile-topbar">
+      <button type="button" class="mobile-menu-btn" onclick="toggleMobileSidebar()" aria-label="Abrir menu">☰</button>
+      <div class="mobile-topbar-logo">
+        <img src="logo.png" alt="PRATA Logo">
+        <span>PRATA</span>
+      </div>
+    </div>
+    <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeMobileSidebar()"></div>
+
     <!-- SIDEBAR LATERAL FIXA -->
     <aside class="sidebar">
       <!-- Logo Container -->
@@ -2302,6 +2312,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="script.js?v=55"></script>
+  <script src="script.js?v=56"></script>
 </body>
 </html>
