@@ -1744,6 +1744,8 @@ body.light .catalogo-metric-item:hover {
 
 .form-select {
   appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
   cursor: pointer;
   background-image: url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
   background-repeat: no-repeat;
@@ -1752,17 +1754,23 @@ body.light .catalogo-metric-item:hover {
   padding-right: 36px;
 }
 
-/* A lista de opções de um <select> aberto é renderizada pelo sistema
-   operacional/navegador, não pelo CSS da página — sem isso, o fundo fica
-   branco (padrão do SO) com o texto claro que a página define pro select
-   fechado, ficando ilegível (texto claro em fundo claro). Isso cobre
-   QUALQUER <select> do app (form-select, filter-select, report-select, ou
-   sem classe nenhuma), já que option herda do elemento pai por padrão.
-   (Chegamos a testar `color-scheme: dark` no <select> pra reforçar isso,
-   mas em alguns Chrome/Windows isso faz o TEXTO DO CONTROLE FECHADO usar a
-   cor de seleção do sistema — texto claro em fundo de destaque do SO,
-   ilegível de outro jeito. Só o estilo em `option` já resolve a lista
-   aberta sem esse efeito colateral.) */
+/* Quando o sistema operacional está no modo escuro, o Chrome/Edge tenta
+   "ajudar" e renderiza os controles nativos de formulário (select,
+   checkbox, etc.) com o tema escuro do PRÓPRIO navegador, por padrão —
+   mesmo sem `color-scheme` nenhum declarado — e essa cor nativa entra em
+   conflito com as cores customizadas da página, deixando o texto
+   selecionado do <select> META esmaecido/ilegível. `color-scheme: light`
+   aqui não deixa a caixa branca (isso já é sobrescrito pelas cores
+   explícitas de fundo/texto abaixo) — só avisa o navegador pra NÃO tentar
+   aplicar o tema escuro nativo dele por cima do nosso CSS. A lista de
+   opções aberta também é renderizada pelo SO/navegador, não pelo CSS da
+   página — por isso o `option` explícito abaixo, senão o fundo fica
+   branco com texto claro, ilegível. Cobre QUALQUER <select> do app
+   (form-select, filter-select, report-select, ou sem classe nenhuma), já
+   que color-scheme e option herdam do elemento pai por padrão. */
+select {
+  color-scheme: light;
+}
 select option {
   background-color: var(--bg-card);
   color: var(--text-primary);
