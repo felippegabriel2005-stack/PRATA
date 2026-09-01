@@ -1758,14 +1758,11 @@ body.light .catalogo-metric-item:hover {
    fechado, ficando ilegível (texto claro em fundo claro). Isso cobre
    QUALQUER <select> do app (form-select, filter-select, report-select, ou
    sem classe nenhuma), já que option herda do elemento pai por padrão.
-   color-scheme depende do tema ativo (body.light) pra não forçar popup
-   escuro quando o app está no modo claro. */
-select {
-  color-scheme: dark;
-}
-body.light select {
-  color-scheme: light;
-}
+   (Chegamos a testar `color-scheme: dark` no <select> pra reforçar isso,
+   mas em alguns Chrome/Windows isso faz o TEXTO DO CONTROLE FECHADO usar a
+   cor de seleção do sistema — texto claro em fundo de destaque do SO,
+   ilegível de outro jeito. Só o estilo em `option` já resolve a lista
+   aberta sem esse efeito colateral.) */
 select option {
   background-color: var(--bg-card);
   color: var(--text-primary);
