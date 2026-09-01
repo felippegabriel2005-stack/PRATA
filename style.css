@@ -1752,6 +1752,17 @@ body.light .catalogo-metric-item:hover {
   background-position: right 12px center;
   background-size: 16px;
   padding-right: 36px;
+  /* O texto do VALOR selecionado de um <select> nativo (mesmo com
+     appearance:none) renderiza mais fino/apagado que texto comum da
+     página, mesmo com a cor certa computada — confirmado com print
+     automatizado. Fundo sólido (em vez do rgba translúcido de .form-input)
+     e um peso de fonte um pouco maior compensam isso sem mudar a paleta. */
+  background-color: var(--bg-app);
+  font-weight: 500;
+}
+
+.form-select:focus {
+  background-color: var(--bg-card);
 }
 
 /* Quando o sistema operacional está no modo escuro, o Chrome/Edge tenta
