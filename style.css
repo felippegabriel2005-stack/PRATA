@@ -1759,6 +1759,14 @@ body.light .catalogo-metric-item:hover {
      e um peso de fonte um pouco maior compensam isso sem mudar a paleta. */
   background-color: var(--bg-app);
   font-weight: 500;
+  /* Se o usuário tiver "Alto contraste"/"Forçar cores" ligado no Windows
+     (um recurso de acessibilidade do sistema, não do navegador), o SO
+     SUBSTITUI as cores de campos de formulário pelas cores do sistema —
+     ignora completamente qualquer color/background-color daqui, não
+     importa o valor. Isso explica textar 3 combinações de cor diferentes
+     sem nenhuma mudar o resultado. forced-color-adjust: none diz ao
+     navegador pra preservar as cores customizadas mesmo nesse modo. */
+  forced-color-adjust: none;
 }
 
 .form-select:focus {
@@ -1781,10 +1789,12 @@ body.light .catalogo-metric-item:hover {
    que color-scheme e option herdam do elemento pai por padrão. */
 select {
   color-scheme: light;
+  forced-color-adjust: none;
 }
 select option {
   background-color: var(--bg-card);
   color: var(--text-primary);
+  forced-color-adjust: none;
 }
 
 .modal-footer {
