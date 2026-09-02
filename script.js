@@ -5273,13 +5273,22 @@ function computeComparisonRow(metric, mainTotals, compareTotals) {
     varLabel = `${variation >= 0 ? '+' : ''}${variation.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
   }
 
-  const isBetterMore = metric.rule !== 'Menor é melhor';
+  // "Igual ou próximo é melhor" e "Apenas referência" não têm uma direção
+  // de "melhor" simples (a primeira julgaria por distância até a meta, que
+  // esta função não recebe; a segunda é explicitamente sem julgamento) —
+  // tratadas como neutras aqui, igual o resto do app já faz pra elas (ver
+  // o "else" cinza da matriz principal). Sem esse cuidado, uma métrica que
+  // o usuário marcou como só-referência podia aparecer destacada como
+  // "Maior melhora" ou "Ponto de atenção" só por ter oscilado bastante.
+  const isBetterMore = metric.rule === 'Maior é melhor';
+  const isBetterLess = metric.rule === 'Menor é melhor';
+  const hasDirection = isBetterMore || isBetterLess;
   let status;
   if (variation === null) {
     status = mainVal > 0 ? 'novo' : 'sem-dado';
   } else {
     const roundedVar = Math.round(variation * 10) / 10;
-    if (Math.abs(roundedVar) < 0.1) {
+    if (!hasDirection || Math.abs(roundedVar) < 0.1) {
       status = 'estavel';
     } else {
       const increased = diff > 0;
