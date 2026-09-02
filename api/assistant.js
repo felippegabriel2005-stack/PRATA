@@ -19,123 +19,20 @@
 // enxuto agora), só pra dizer "em que tela o usuário está" — pra "essa
 // tela"/"aqui" continuar respondendo com o que está literalmente visível.
 
-const SUPABASE_URL = 'https://ldcpwadnvuotacwnkcop.supabase.co';
-
-async function sb(path, key) {
-  try {
-    const resp = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
-    });
-    if (!resp.ok) return [];
-    return await resp.json();
-  } catch (e) {
-    console.error('Erro ao consultar Supabase:', path, e);
-    return [];
-  }
-}
-
-// ==========================================================================
-// Lógica pura portada de script.js (mesmas fórmulas, sem DOM) — ver
-// resolveUnifiedSalesAndRevenue/computeClientStatusFromData lá pro
-// original comentado. Duplicada aqui de propósito: esta função roda numa
-// serverless function isolada, sem acesso ao bundle do navegador.
-// ==========================================================================
-
-function buildImportedDailyCounts(leadsRows) {
-  const sales = {}, revenue = {};
-  (leadsRows || []).forEach(l => {
-    const date = l.date;
-    if (!date) return;
-    const saleVal = Number(l.sale_value) || 0;
-    if (saleVal > 0) sales[date] = (sales[date] || 0) + 1;
-    const rev = Number(l.revenue) || saleVal;
-    if (rev > 0) revenue[date] = (revenue[date] || 0) + rev;
-  });
-  return { sales, revenue };
-}
-
-function buildPortalDailyValues(customFields, customFieldValues, mappingType) {
-  const fieldIds = new Set((customFields || []).filter(f => f.active && f.metric_mapping === mappingType).map(f => f.id));
-  const byDate = {};
-  (customFieldValues || []).forEach(v => {
-    if (!fieldIds.has(v.field_id)) return;
-    byDate[v.period_date] = (byDate[v.period_date] || 0) + (Number(v.value_number) || 0);
-  });
-  return byDate;
-}
-
-function unifyDailySeries(importByDate, portalByDate) {
-  const dates = new Set([...Object.keys(importByDate || {}), ...Object.keys(portalByDate || {})]);
-  const records = [];
-  dates.forEach(date => {
-    if (portalByDate[date] !== undefined) records.push({ date, value: portalByDate[date], source: 'portal' });
-    else records.push({ date, value: importByDate[date], source: 'import' });
-  });
-  const total = records.reduce((s, r) => s + r.value, 0);
-  const bySource = { import: 0, portal: 0 };
-  records.forEach(r => { bySource[r.source] += r.value; });
-  return { total, bySource, records };
-}
-
-// Vendas/Receita: histórico importado (leads_sales) + portal, sem duplicar
-// no mesmo dia — só entra em jogo depois que existe campo mapeado (mesma
-// regra do app: campo não é o que "libera" o histórico, é o que dita se a
-// unificação vale a pena calcular).
-function resolveUnifiedSalesAndRevenue(leadsRows, customFields, customFieldValues) {
-  const importedDaily = buildImportedDailyCounts(leadsRows);
-  const portalSalesDaily = buildPortalDailyValues(customFields, customFieldValues, 'sales');
-  const portalRevenueDaily = buildPortalDailyValues(customFields, customFieldValues, 'revenue');
-  return {
-    sales: unifyDailySeries(importedDaily.sales, portalSalesDaily),
-    revenue: unifyDailySeries(importedDaily.revenue, portalRevenueDaily)
-  };
-}
-
-function sourceLabel(bySource) {
-  const hasImport = bySource.import > 0;
-  const hasPortal = bySource.portal > 0;
-  if (hasImport && hasPortal) return 'importação + portal do cliente';
-  if (hasPortal) return 'informado pelo cliente no portal';
-  if (hasImport) return 'importação (histórico)';
-  return 'mídia (sem dado comercial mapeado ainda)';
-}
-
-// Status simplificado (ROI + metas cadastradas) pra dar ao Assistente uma
-// ideia rápida de saúde — não inclui tendência mês a mês/atualização de
-// dados/campos pendentes (isso fica só no Score de Saúde visual do painel,
-// que roda no navegador). Suficiente pro nível de resposta de um chat.
-function quickStatus(invest, revenue, conversions, targets, actualByMetric) {
-  const reasons = [];
-  let severity = 0;
-  if (invest > 0) {
-    const roi = ((revenue - invest) / invest) * 100;
-    if (roi < 0) { reasons.push(`ROI negativo (${Math.round(roi)}%)`); severity = 2; }
-    else if (roi < 50) { reasons.push(`ROI baixo (${Math.round(roi)}%)`); severity = Math.max(severity, 1); }
-    if (conversions === 0) { reasons.push('Investimento sem nenhuma conversão de mídia registrada'); severity = 2; }
-  }
-  (targets || []).forEach(t => {
-    const actual = actualByMetric[t.metric_name];
-    const target = Number(t.target_value);
-    if (actual === null || actual === undefined || !target) return;
-    const rule = t.rule || '';
-    let ratio = null;
-    if (rule.includes('Menor')) ratio = actual / target;
-    else if (rule.includes('Maior')) ratio = target / actual;
-    if (ratio === null) return;
-    if (ratio > 1.3) { reasons.push(`${t.metric_name.toUpperCase()} fora da meta definida`); severity = 2; }
-    else if (ratio > 1.1) { reasons.push(`${t.metric_name.toUpperCase()} levemente fora da meta`); severity = Math.max(severity, 1); }
-  });
-  return { status: severity === 2 ? 'crítico' : severity === 1 ? 'atenção' : 'saudável', motivos: reasons };
-}
-
-async function findClientSlug(clientName, key) {
-  const rows = await sb(`clients?name=ilike.${encodeURIComponent(clientName)}&select=name,slug`, key);
-  if (rows.length) return rows[0];
-  // Tenta um match parcial (contém) se o nome exato não bateu.
-  const all = await sb(`clients?select=name,slug`, key);
-  const lower = clientName.toLowerCase();
-  return all.find(c => c.name.toLowerCase().includes(lower)) || null;
-}
+// Lógica pura (vendas/receita unificadas, funil comercial, status rápido)
+// agora vive em ./_lib/prata-core.js, compartilhada com api/kpis.js (o
+// endpoint que expõe os mesmos números pra integrações externas, como o
+// agente de WhatsApp em n8n) — uma correção de regra aqui vale pros dois.
+// Continua sendo uma 4ª cópia da MESMA lógica de script.js/portal-cliente.js
+// (essas sim precisam ficar duplicadas — rodam no navegador, sem Node).
+const {
+  sb,
+  resolveUnifiedSalesAndRevenue,
+  sourceLabel,
+  quickStatus,
+  findClientSlug,
+  computeCommercialFunnelFromLeads
+} = require('./_lib/prata-core');
 
 // KPIs principais de UM cliente — mesmo nível de detalhe sempre, seja qual
 // for o cliente pedido, pra nunca comparar "maçã com laranja" numa comparação.
