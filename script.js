@@ -247,6 +247,35 @@ function resolveDisqualificationReasons(customFields, customFieldValues) {
   return { reasons, freeTextEntries: freeTextEntries.slice(0, 20) };
 }
 
+// Ordem de progressão real do funil comercial (leads_sales.stage). "Descartado"
+// fica de fora da barra sequencial — é uma saída que pode acontecer a partir
+// de qualquer etapa, não um degrau de avanço, então é reportado à parte.
+const COMMERCIAL_FUNNEL_STAGE_ORDER = ['Novo', 'Em abordagem', 'Qualificado', 'Atendido', 'Proposta enviada', 'Venda'];
+
+// Funil comercial de verdade: agrupa leads_sales pela etapa real do negócio
+// (Novo → Em abordagem → Qualificado → Atendido → Proposta enviada → Venda),
+// nunca misturado com métrica de mídia (isso é o "Funil de mídia", separado).
+// Etapas fora da lista conhecida (pipeline customizado) entram no fim, antes
+// de Descartado — pra nunca perder lead nenhum da contagem.
+function computeCommercialFunnelFromLeads(leadsRows) {
+  const rows = leadsRows || [];
+  const counts = {};
+  let discarded = 0;
+  rows.forEach(l => {
+    const stage = (l.stage || '').toString().trim();
+    if (!stage) return;
+    if (stage === 'Descartado') { discarded++; return; }
+    counts[stage] = (counts[stage] || 0) + 1;
+  });
+  const stages = COMMERCIAL_FUNNEL_STAGE_ORDER
+    .map(name => ({ name, count: counts[name] || 0 }));
+  Object.keys(counts).forEach(name => {
+    if (!COMMERCIAL_FUNNEL_STAGE_ORDER.includes(name)) stages.push({ name, count: counts[name] });
+  });
+  const total = rows.length;
+  return { stages, discarded, total };
+}
+
 // --------------------------------------------------
 // Unificação Vendas/Receita: histórico importado (leads_sales) + portal
 // --------------------------------------------------
@@ -533,20 +562,25 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, cust
   const cpa = totalConvs > 0 ? totalInvest / totalConvs : 0;
   const roi = totalInvest > 0 ? ((totalRevenue - totalInvest) / totalInvest) * 100 : 0;
 
-  // O último estágio do funil é rotulado "Vendas" na tela — quando existe
-  // venda real mapeada, mostra ela (e a % final bate com ela); sem
-  // mapeamento, continua caindo no proxy de conversões de mídia (como já
-  // era antes, só que agora deixando claro que é um proxy, não a venda em si).
-  const finalFunnelValue = salesResolved !== null ? salesResolved : totalConvs;
-  const finalFunnelPct = totalClicks > 0 ? (finalFunnelValue / totalClicks) * 100 : 0;
+  // Funil de MÍDIA — as 4 etapas vêm todas de campaign_metrics (impressões,
+  // cliques, page views, conversões de mídia). Antes o último degrau virava
+  // "Vendas" quando havia venda real mapeada, o que misturava métrica de
+  // mídia com métrica comercial no mesmo funil sob rótulos de pipeline de
+  // vendas — corrigido: esse funil agora é só mídia, do início ao fim. Vendas
+  // reais têm o próprio funil (commercialFunnel, logo abaixo), a partir do
+  // pipeline de verdade (leads_sales.stage).
+  const finalFunnelPct = totalClicks > 0 ? (totalConvs / totalClicks) * 100 : 0;
 
-  const funnel = [formatNumber(totalImpress), formatNumber(totalClicks), formatNumber(totalPageViews), formatNumber(finalFunnelValue)];
+  const funnel = [formatNumber(totalImpress), formatNumber(totalClicks), formatNumber(totalPageViews), formatNumber(totalConvs)];
   const funnelPct = [
     '100%',
     totalImpress > 0 ? `${((totalClicks / totalImpress) * 100).toFixed(0)}%` : '0%',
     totalClicks > 0 ? `${((totalPageViews / totalClicks) * 100).toFixed(0)}%` : '0%',
     `${finalFunnelPct.toFixed(1)}% final`
   ];
+
+  // Funil COMERCIAL — pipeline real de leads_sales, nunca misturado com mídia.
+  const commercialFunnel = computeCommercialFunnelFromLeads(leadsRows);
 
   // Estatísticas derivadas de vendas/receita reais (só fazem sentido quando
   // existe um valor mapeado por campo personalizado — sem venda real
@@ -700,6 +734,7 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, cust
     ],
     funnel,
     funnelPct,
+    commercialFunnel,
     leadsSource,
     lossReasons,
     evolution,
@@ -3279,7 +3314,51 @@ function applyFilhoDashboardData(built) {
 
   document.getElementById('c-num-conversao').innerText = built.metrics.conversao;
 
+  renderCommercialFunnel(built.commercialFunnel);
   renderCommercialMetrics(built);
+}
+
+// Funil comercial de verdade (pipeline de leads_sales) — lista de etapas com
+// contagem e barra proporcional, no mesmo estilo de "Origem dos leads"/
+// "Motivos de perda" (não força as 6 etapas dentro do componente rígido de
+// 4 caixas do funil de mídia, que não faz sentido pra um número variável de
+// etapas customizáveis por cliente).
+function renderCommercialFunnel(commercialFunnel) {
+  const list = document.getElementById('c-commercial-funnel-list');
+  const discardedEl = document.getElementById('c-commercial-funnel-discarded');
+  if (!list) return;
+
+  if (!commercialFunnel || commercialFunnel.total === 0) {
+    list.innerHTML = `<li style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px 0;">Nenhum lead/negócio importado ainda para este cliente.</li>`;
+    if (discardedEl) discardedEl.style.display = 'none';
+    return;
+  }
+
+  const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#f97316', '#10b981', '#6b7280'];
+  list.innerHTML = commercialFunnel.stages.map((s, i) => {
+    const pct = commercialFunnel.total > 0 ? Math.round((s.count / commercialFunnel.total) * 100) : 0;
+    return `
+      <li class="progress-item">
+        <div class="progress-header">
+          <span class="progress-name">${escapeHtml(s.name)}</span>
+          <span class="progress-value">${pct}% (${s.count})</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width: ${pct}%; background-color: ${colors[i % colors.length]};"></div>
+        </div>
+      </li>
+    `;
+  }).join('');
+
+  if (discardedEl) {
+    if (commercialFunnel.discarded > 0) {
+      const pctDiscarded = Math.round((commercialFunnel.discarded / commercialFunnel.total) * 100);
+      discardedEl.style.display = 'block';
+      discardedEl.innerText = `${commercialFunnel.discarded} lead(s) descartado(s) (${pctDiscarded}% do total) — não entram na barra de progresso acima, já que saíram do funil em vez de avançar.`;
+    } else {
+      discardedEl.style.display = 'none';
+    }
+  }
 }
 
 async function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
@@ -3333,8 +3412,10 @@ async function updateDashboardFilhoForCustomPeriod(startDate, endDate) {
   const factor = Math.min(1.0, diffDays / 31);
 
   // Fallback (sem "raw" — dado fictício de demonstração antigo): não tem
-  // campos personalizados, então a seção de Métricas Comerciais some.
+  // campos personalizados nem leads_sales reais, então a seção de Métricas
+  // Comerciais e o Funil Comercial somem (não tem pipeline real pra mostrar).
   renderCommercialMetrics({ commercial: {}, customMetrics: [], commercialStats: {} });
+  renderCommercialFunnel(null);
 
   const getVal = (str) => {
     if (!str) return 0;

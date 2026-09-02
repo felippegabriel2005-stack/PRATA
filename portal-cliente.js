@@ -243,6 +243,7 @@ async function loadClientDashboardData() {
     funnelSection.style.display = 'none';
   }
 
+  renderPortalCommercialFunnel(built.commercialFunnel);
   renderPortalCommercialMetrics(built);
 
   renderPortalUpdates(rows.length, (leadsRows || []).length);
@@ -392,6 +393,26 @@ function resolveUnifiedSalesAndRevenuePortal(leadsRows, customFields, customFiel
   };
 }
 
+// Igual à versão de script.js: funil comercial de verdade, a partir da etapa
+// real do negócio (leads_sales.stage) — nunca misturado com métrica de mídia.
+const COMMERCIAL_FUNNEL_STAGE_ORDER_PORTAL = ['Novo', 'Em abordagem', 'Qualificado', 'Atendido', 'Proposta enviada', 'Venda'];
+function computeCommercialFunnelFromLeadsPortal(leadsRows) {
+  const rows = leadsRows || [];
+  const counts = {};
+  let discarded = 0;
+  rows.forEach(l => {
+    const stage = (l.stage || '').toString().trim();
+    if (!stage) return;
+    if (stage === 'Descartado') { discarded++; return; }
+    counts[stage] = (counts[stage] || 0) + 1;
+  });
+  const stages = COMMERCIAL_FUNNEL_STAGE_ORDER_PORTAL.map(name => ({ name, count: counts[name] || 0 }));
+  Object.keys(counts).forEach(name => {
+    if (!COMMERCIAL_FUNNEL_STAGE_ORDER_PORTAL.includes(name)) stages.push({ name, count: counts[name] });
+  });
+  return { stages, discarded, total: rows.length };
+}
+
 function describeSourceLabelPortal(bySource) {
   const hasImport = bySource.import > 0;
   const hasPortal = bySource.portal > 0;
@@ -399,6 +420,47 @@ function describeSourceLabelPortal(bySource) {
   if (hasPortal) return { key: 'portal', text: 'Fonte: informado pelo cliente' };
   if (hasImport) return { key: 'import', text: 'Fonte: importação' };
   return { key: 'none', text: '' };
+}
+
+// Igual à versão de script.js (renderCommercialFunnel): lista de etapas do
+// pipeline real com barra proporcional, no lugar do funil de 4 caixas rígido
+// (esse é só pro funil de mídia, que tem sempre exatamente 4 etapas).
+function renderPortalCommercialFunnel(commercialFunnel) {
+  const list = document.getElementById('portal-commercial-funnel-list');
+  const discardedEl = document.getElementById('portal-commercial-funnel-discarded');
+  if (!list) return;
+
+  if (!commercialFunnel || commercialFunnel.total === 0) {
+    list.innerHTML = `<li style="font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px 0;">Nenhum lead/negócio importado ainda.</li>`;
+    if (discardedEl) discardedEl.style.display = 'none';
+    return;
+  }
+
+  const colors = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#f97316', '#10b981', '#6b7280'];
+  list.innerHTML = commercialFunnel.stages.map((s, i) => {
+    const pct = commercialFunnel.total > 0 ? Math.round((s.count / commercialFunnel.total) * 100) : 0;
+    return `
+      <li class="progress-item">
+        <div class="progress-header">
+          <span class="progress-name">${escapeHtml(s.name)}</span>
+          <span class="progress-value">${pct}% (${s.count})</span>
+        </div>
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" style="width: ${pct}%; background-color: ${colors[i % colors.length]};"></div>
+        </div>
+      </li>
+    `;
+  }).join('');
+
+  if (discardedEl) {
+    if (commercialFunnel.discarded > 0) {
+      const pctDiscarded = Math.round((commercialFunnel.discarded / commercialFunnel.total) * 100);
+      discardedEl.style.display = 'block';
+      discardedEl.innerText = `${commercialFunnel.discarded} lead(s) descartado(s) (${pctDiscarded}% do total).`;
+    } else {
+      discardedEl.style.display = 'none';
+    }
+  }
 }
 
 // Preenche a seção "Métricas comerciais" do portal — mesmo comportamento da
@@ -535,11 +597,12 @@ function buildPortalClientData(campaigns, leadsRows, customFields, customFieldVa
   const cpa = totalConvs > 0 ? totalInvest / totalConvs : 0;
   const roi = totalInvest > 0 ? ((totalRevenue - totalInvest) / totalInvest) * 100 : 0;
 
-  // O último estágio do funil é rotulado "Vendas" na tela — quando existe
-  // venda real mapeada, mostra ela (e a % final bate com ela); sem
-  // mapeamento, continua caindo no proxy de conversões de mídia.
-  const finalFunnelValue = salesResolved !== null ? salesResolved : totalConvs;
+  // Funil de MÍDIA — só campaign_metrics, do início ao fim. Igual ao painel
+  // da agência (script.js), esse funil não mistura mais com venda real; o
+  // funil comercial de verdade vem de computeCommercialFunnelFromLeadsPortal.
+  const finalFunnelValue = totalConvs;
   const finalFunnelPct = totalClicks > 0 ? (finalFunnelValue / totalClicks) * 100 : 0;
+  const commercialFunnel = computeCommercialFunnelFromLeadsPortal(leadsRows);
 
   const custoPorVenda = salesResolved > 0 ? totalInvest / salesResolved : null;
   const taxaLeadVenda = salesResolved !== null && totalLeads > 0 ? (salesResolved / totalLeads) * 100 : null;
@@ -629,7 +692,7 @@ function buildPortalClientData(campaigns, leadsRows, customFields, customFieldVa
       sales: salesResolved
     },
     conversaoPct, cpl, cpa, roi,
-    finalFunnelValue, finalFunnelPct,
+    finalFunnelValue, finalFunnelPct, commercialFunnel,
     commercial, customMetrics, revenueSource, revenueSourceLabel, salesSourceLabel, salesResolved,
     disqualificationReasons: disqualification.reasons, disqualificationFreeText: disqualification.freeTextEntries,
     commercialStats: { custoPorVenda, taxaLeadVenda, taxaCliqueVenda, ticketMedio, roas },

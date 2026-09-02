@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRATA - Revenue Tracking & Intelligence</title>
-  <link rel="stylesheet" href="style.css?v=62">
+  <link rel="stylesheet" href="style.css?v=63">
 </head>
 <body>
   <!-- TELA DE LOGIN -->
@@ -642,30 +642,33 @@
           <div class="separator-diamond"></div>
         </div>
 
-        <!-- Funil do Cliente -->
+        <!-- Funil de Mídia (impressões → cliques → page views → conversões de
+             mídia) — separado do Funil Comercial abaixo. Antes esse último
+             degrau virava "Vendas" quando existia venda mapeada, misturando
+             métrica de mídia com métrica comercial no mesmo funil; agora esse
+             funil é só mídia, do início ao fim. -->
         <section class="section-container">
-          <h2 class="section-heading">Funil do cliente</h2>
+          <h2 class="section-heading">Funil de mídia</h2>
           <div class="funnel-card">
             <div class="funnel-grid">
               <div class="funnel-step">
-                <span class="funnel-step-label">Em Abordagem</span>
+                <span class="funnel-step-label">Impressões</span>
                 <span class="funnel-step-value" id="c-funnel-val-1">1.240</span>
               </div>
               <div class="funnel-step">
-                <span class="funnel-step-label">Qualificados</span>
+                <span class="funnel-step-label">Cliques</span>
                 <span class="funnel-step-value" id="c-funnel-val-2">496</span>
               </div>
               <div class="funnel-step">
-                <span class="funnel-step-label">Propostas</span>
+                <span class="funnel-step-label">Page Views</span>
                 <span class="funnel-step-value" id="c-funnel-val-3">148</span>
               </div>
               <div class="funnel-step">
-                <span class="funnel-step-label">Vendas</span>
+                <span class="funnel-step-label">Conversões de mídia</span>
                 <span class="funnel-step-value" id="c-funnel-val-4">38</span>
-                <span class="card-source-badge" id="c-vendas-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Fonte: Informado pelo cliente</span>
               </div>
             </div>
-            
+
             <div class="funnel-bar-container">
               <div class="funnel-segment" style="width: 40%;">
                 <div class="funnel-segment-fill"></div>
@@ -685,6 +688,24 @@
               </div>
             </div>
           </div>
+        </section>
+
+        <!-- Separador -->
+        <div class="section-separator">
+          <div class="separator-diamond"></div>
+        </div>
+
+        <!-- Funil Comercial — pipeline real de leads_sales.stage, nunca
+             misturado com métrica de mídia. Etapas variam em quantidade por
+             cliente, por isso usa a mesma lista de barras proporcionais de
+             "Origem dos leads"/"Motivos de perda" em vez do componente rígido
+             de 4 caixas acima (pensado só pro funil de mídia). -->
+        <section class="table-card">
+          <h2 class="section-heading">Funil comercial <span style="font-size: 10px; font-weight: 400; color: var(--text-secondary);">(pipeline de leads/negócios — pode diferir do card "Vendas" acima, que também soma valores informados pelo cliente no portal sem lead individual associado)</span></h2>
+          <ul id="c-commercial-funnel-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;">
+            <!-- JS: renderCommercialFunnel() -->
+          </ul>
+          <div id="c-commercial-funnel-discarded" style="display:none; margin-top: 12px; font-size: 11px; color: var(--text-secondary);"></div>
         </section>
 
         <!-- Separador -->
@@ -2312,6 +2333,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="script.js?v=62"></script>
+  <script src="script.js?v=63"></script>
 </body>
 </html>

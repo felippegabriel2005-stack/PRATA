@@ -10,7 +10,7 @@
     MESMO Supabase do PRATA (nunca um banco separado). Ver aviso de segurança
     no topo de portal-cliente.js antes de divulgar este link publicamente.
   -->
-  <link rel="stylesheet" href="style.css?v=62">
+  <link rel="stylesheet" href="style.css?v=63">
   <style>
     body.portal-body {
       display: block;
@@ -151,27 +151,26 @@
         </div>
       </section>
 
-      <!-- Funil do Cliente -->
+      <!-- Funil de Mídia -->
       <section class="table-card" id="portal-funnel-section" style="margin-bottom: 20px; display: none;">
-        <h2 class="section-heading">Funil do cliente</h2>
+        <h2 class="section-heading">Funil de mídia</h2>
         <div class="funnel-card">
           <div class="funnel-grid">
             <div class="funnel-step">
-              <span class="funnel-step-label">Em Abordagem</span>
+              <span class="funnel-step-label">Impressões</span>
               <span class="funnel-step-value" id="portal-funnel-val-1">—</span>
             </div>
             <div class="funnel-step">
-              <span class="funnel-step-label">Qualificados</span>
+              <span class="funnel-step-label">Cliques</span>
               <span class="funnel-step-value" id="portal-funnel-val-2">—</span>
             </div>
             <div class="funnel-step">
-              <span class="funnel-step-label">Propostas</span>
+              <span class="funnel-step-label">Page Views</span>
               <span class="funnel-step-value" id="portal-funnel-val-3">—</span>
             </div>
             <div class="funnel-step">
-              <span class="funnel-step-label">Vendas</span>
+              <span class="funnel-step-label">Conversões de mídia</span>
               <span class="funnel-step-value" id="portal-funnel-val-4">—</span>
-              <span class="card-source-badge" id="portal-vendas-source-badge" style="display:none; font-size:9px; color:var(--text-secondary); margin-top:2px;">Fonte: Informado pelo cliente</span>
             </div>
           </div>
 
@@ -194,6 +193,15 @@
             </div>
           </div>
         </div>
+      </section>
+
+      <!-- Funil Comercial — pipeline real (leads_sales.stage) -->
+      <section class="table-card" id="portal-commercial-funnel-section" style="margin-bottom: 20px;">
+        <h2 class="section-heading">Funil comercial <span style="font-size: 10px; font-weight: 400; color: var(--text-secondary);">(pipeline de leads/negócios)</span></h2>
+        <ul id="portal-commercial-funnel-list" style="list-style: none; margin-top: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 12px;">
+          <!-- JS: renderPortalCommercialFunnel() -->
+        </ul>
+        <div id="portal-commercial-funnel-discarded" style="display:none; margin-top: 12px; font-size: 11px; color: var(--text-secondary);"></div>
       </section>
 
       <!-- Métricas Comerciais: só aparece quando há campo personalizado
@@ -380,6 +388,6 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="portal-cliente.js?v=62"></script>
+  <script src="portal-cliente.js?v=63"></script>
 </body>
 </html>
