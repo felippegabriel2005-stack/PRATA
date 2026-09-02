@@ -3514,6 +3514,48 @@ body.light .kanban-add-stage-column:hover {
   .portal-wrapper {
     padding: 20px 16px 40px;
   }
+
+  /* Trava de segurança: só o table-wrapper (e outros contêineres que
+     assumam overflow-x de propósito) devem rolar na horizontal — nunca o
+     painel inteiro. Sem isso, qualquer grid que não coubesse (ex: o funil
+     do cliente, 4 colunas) deixava o main-panel inteiro arrastável de lado,
+     cortando o início do texto de TODAS as seções ao ser arrastado sem
+     querer no touch. */
+  .main-panel {
+    overflow-x: hidden;
+  }
+
+  /* Funil do cliente: 4 colunas lado a lado não cabem com números grandes
+     (ex: "2.116.122") em tela de celular — 2x2 dá espaço de sobra. */
+  .funnel-grid {
+    grid-template-columns: repeat(2, 1fr);
+    row-gap: 16px;
+  }
+
+  .funnel-step-value {
+    font-size: 19px;
+    word-break: break-word;
+  }
+
+  /* Cabeçalhos de tabela com busca + filtros (ex: "Campanhas" no dashboard
+     do cliente) — título e controles em linha não cabem, quebram pra
+     coluna e os inputs/selects passam a dividir a largura disponível em
+     vez de manter larguras fixas de desktop (160px etc.) que estourariam. */
+  .table-card > header {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  .table-card > header > div {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .table-card > header > div input,
+  .table-card > header > div select {
+    flex: 1 1 130px;
+    width: auto !important;
+  }
 }
 
 @media (max-width: 560px) {

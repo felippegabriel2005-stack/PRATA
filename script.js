@@ -6179,6 +6179,20 @@ function renderAdsChart(chartData) {
     svgContent += `<text x="${w - paddingRight + 8}" y="${y + 3}" text-anchor="start" class="chart-axis-text">${convsLabel}</text>`;
   }
 
+  // Quantos rótulos de data cabem sem sobrepor, dado o espaço real do
+  // gráfico (não um número fixo) — essencial no celular, onde chartW é bem
+  // menor e um stride fixo de "a cada 2" ainda colava um rótulo no outro.
+  // ~28px é o espaço mínimo pra caber "DD/MM" em chart-axis-text (8px) sem colidir.
+  const minLabelPx = 28;
+  const maxLabels = chartW > 0 ? Math.max(2, Math.floor(chartW / minLabelPx) + 1) : n;
+  const labelIndexes = new Set();
+  if (n <= maxLabels) {
+    for (let i = 0; i < n; i++) labelIndexes.add(i);
+  } else {
+    const idxStride = (n - 1) / (maxLabels - 1);
+    for (let k = 0; k < maxLabels; k++) labelIndexes.add(Math.round(k * idxStride));
+  }
+
   // Desenha Barras de Investimento
   const barW = Math.min(Math.max(stepX * 0.65, 5), 24);
   for (let i = 0; i < n; i++) {
@@ -6189,11 +6203,9 @@ function renderAdsChart(chartData) {
 
     svgContent += `<rect x="${x - barW / 2}" y="${y}" width="${barW}" height="${barH}" rx="2" class="chart-bar-invest" data-date="${chartData.dates[i]}" data-value="${val}" data-type="invest"></rect>`;
 
-    // Rótulos do eixo X (Datas) — sempre mostra o primeiro e o último ponto,
-    // e a cada 2 no meio; quando n é par isso fazia o penúltimo rótulo
-    // (i === n-2) cair colado no último (i === n-1), sobrepondo o texto —
-    // por isso o `i < n - 2` no meio, pra nunca mostrar dois rótulos adjacentes.
-    if (n <= 7 || i === 0 || i === n - 1 || (i % 2 === 0 && i < n - 2)) {
+    // Rótulos do eixo X (Datas) — indices pré-calculados em labelIndexes,
+    // sempre com primeiro/último ponto e espaçamento mínimo respeitado.
+    if (labelIndexes.has(i)) {
       svgContent += `<text x="${x}" y="${h - paddingBottom + 16}" text-anchor="middle" class="chart-axis-text">${chartData.dates[i]}</text>`;
     }
   }
