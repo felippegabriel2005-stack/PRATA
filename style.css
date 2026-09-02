@@ -3482,6 +3482,28 @@ body.light .kanban-add-stage-column:hover {
 
   .header-wrapper > * {
     width: 100%;
+    min-width: 0;
+  }
+
+  /* Qualquer linha de controles dentro do header (estatísticas rápidas,
+     sino/assistente/avatar etc.) também precisa poder quebrar — do
+     contrário mini-cards com min-width fixo (comuns nos headers do
+     Pipeline Comercial, Radar, Contatos) furavam a tela por uns 10-30px. */
+  .header-wrapper > div {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .reports-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .reports-grid > * {
+    min-width: 0;
+  }
+
+  .reports-preview-col {
+    position: static !important;
   }
 
   .filters-container {
@@ -3538,11 +3560,16 @@ body.light .kanban-add-stage-column:hover {
   }
 
   /* Cabeçalhos de tabela com busca + filtros (ex: "Campanhas" no dashboard
-     do cliente) — título e controles em linha não cabem, quebram pra
-     coluna e os inputs/selects passam a dividir a largura disponível em
-     vez de manter larguras fixas de desktop (160px etc.) que estourariam. */
+     do cliente) — título e controles em linha não cabem. Empilha em
+     coluna e os inputs/selects dividem a largura disponível em % (não em
+     px fixo) pra nunca depender de conta de espaço — e o min-width: 0 é
+     essencial aqui, porque por padrão um item flex NUNCA encolhe abaixo
+     do próprio conteúdo (texto da <option> mais longa, no caso do
+     select), então mesmo com flex-basis/width certos ele continuava
+     largo e furando a tela sem esse reset. */
   .table-card > header {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: flex-start !important;
     row-gap: 10px;
   }
 
@@ -3553,8 +3580,46 @@ body.light .kanban-add-stage-column:hover {
 
   .table-card > header > div input,
   .table-card > header > div select {
-    flex: 1 1 130px;
+    flex: 1 1 45%;
+    min-width: 0 !important;
     width: auto !important;
+  }
+
+  /* Barra de filtros das Análises (Conversão, WhatsApp etc.) — mesmo
+     problema: "Plataforma", "Campanhas", "Período" e "Comparar mês" lado
+     a lado com min-width fixo (120-160px) em estilo inline nunca cabiam
+     juntos no celular. Empilha um filtro por linha, cada um ocupando a
+     largura toda. */
+  .filters-bar-conversao {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+
+  .filter-item-wrapper {
+    width: 100%;
+  }
+
+  .filter-item-wrapper .filter-select,
+  .filter-item-wrapper select,
+  .filter-item-wrapper button {
+    flex: 1 1 auto;
+    min-width: 0 !important;
+    width: 100%;
+  }
+
+  .breadcrumb-container {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  /* Dropdowns que abrem a partir desses botões (campanhas, comparar mês) —
+     tinham largura fixa (260-320px) e podiam vazar pra fora da tela. */
+  .campaigns-dropdown-box,
+  #conv-compare-dropdown {
+    max-width: calc(100vw - 32px) !important;
+    width: calc(100vw - 32px) !important;
+    left: 0 !important;
+    right: auto !important;
   }
 }
 
