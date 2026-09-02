@@ -10365,6 +10365,11 @@ function setupMobileSidebar() {
   if (!sidebar) return;
   sidebar.addEventListener('click', (e) => {
     if (window.innerWidth > 900) return;
+    // "Comercial" é um client-item que só expande/colapsa o submenu (Radar/
+    // Pipeline/Contatos) na hora, não navega — fechar a gaveta nesse clique
+    // escondia as opções que ele acabou de abrir, obrigando o usuário a
+    // reabrir a gaveta e clicar de novo pra selecionar algo.
+    if (e.target.closest('#sidebar-comercial-header')) return;
     const target = e.target.closest('.menu-link, .client-item, .analysis-item, .client-more-link');
     if (target) closeMobileSidebar();
   });
