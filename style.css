@@ -3621,6 +3621,29 @@ body.light .kanban-add-stage-column:hover {
     left: 0 !important;
     right: auto !important;
   }
+
+  /* Painel do Assistente de IA: era 38%/55% da largura da tela (pensado
+     pra desktop, ao lado do conteúdo) — no celular isso virava uma faixa
+     de ~150px, com todo o texto quebrando letra a letra. Vira tela cheia. */
+  .assist-panel,
+  .assist-panel.expanded {
+    width: 100%;
+  }
+
+  /* Dropdown de notificações (sino) do Dashboard Pai: usava
+     position:absolute + right:0 relativo ao próprio botão do sino — como
+     o header agora quebra em várias linhas no celular, o sino podia
+     parar em qualquer lugar da tela, e o dropdown (320px) saía sempre
+     pela esquerda. position:fixed ancora ele na tela de verdade, não
+     mais relativo a onde o botão calhou de cair. */
+  #pai-alerts-dropdown {
+    position: fixed !important;
+    top: 64px !important;
+    left: 16px !important;
+    right: 16px !important;
+    width: auto !important;
+    max-width: none !important;
+  }
 }
 
 @media (max-width: 560px) {
