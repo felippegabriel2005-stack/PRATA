@@ -3644,6 +3644,51 @@ body.light .kanban-add-stage-column:hover {
     width: auto !important;
     max-width: none !important;
   }
+
+  /* Pipeline Comercial: colunas lado a lado com scroll horizontal são
+     difíceis de usar no celular (fácil perder o fio de qual etapa é
+     qual). Vira uma esteira vertical — uma etapa embaixo da outra — e
+     tocar no cabeçalho de uma etapa retrai ela (só o cabeçalho com a
+     contagem/valor fica visível), pra focar numa etapa por vez sem
+     precisar rolar a tela toda pra encontrar a próxima. */
+  .kanban-board-wrapper {
+    overflow-x: visible !important;
+  }
+
+  .kanban-board {
+    flex-direction: column !important;
+    width: 100% !important;
+    align-items: stretch !important;
+    padding-right: 0 !important;
+  }
+
+  .kanban-column {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-height: 55vh !important;
+  }
+
+  .kanban-column.collapsed {
+    max-height: none !important;
+  }
+
+  .kanban-column-header {
+    cursor: pointer;
+  }
+
+  .kanban-column.collapsed .kanban-cards-container,
+  .kanban-column.collapsed .kanban-add-card-btn {
+    display: none !important;
+  }
+
+  .kanban-column.collapsed .kanban-collapse-chevron {
+    transform: rotate(-90deg);
+  }
+
+  .kanban-add-stage-column {
+    width: 100% !important;
+    flex: none !important;
+  }
 }
 
 @media (max-width: 560px) {

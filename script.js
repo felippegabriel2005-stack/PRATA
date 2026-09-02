@@ -8946,6 +8946,13 @@ function selectComercialTab(tab) {
 // Kanban Render & Logic
 // --------------------------------------------------
 
+// No celular o board vira uma "esteira" vertical (etapas empilhadas em vez
+// de colunas lado a lado) e cada etapa pode ser retraída pra só o cabeçalho
+// ficar visível — precisa sobreviver a re-renders (o board inteiro é
+// reconstruído do zero a cada mudança), por isso guarda o estado aqui fora
+// da função em vez de depender de uma classe que seria recriada em branco.
+const kanbanCollapsedStagesMobile = new Set();
+
 function renderPipelineKanban() {
   const board = document.getElementById('pipeline-kanban-board');
   if (!board) return;
@@ -8956,7 +8963,7 @@ function renderPipelineKanban() {
     const sumValue = stageLeads.reduce((acc, curr) => acc + (curr.potentialValue || 0), 0);
     
     const col = document.createElement('div');
-    col.className = 'kanban-column';
+    col.className = 'kanban-column' + (kanbanCollapsedStagesMobile.has(stage.id) ? ' collapsed' : '');
     col.draggable = true;
     col.setAttribute('data-stage-id', stage.id);
     col.style.borderTop = `3px solid ${stage.color || 'var(--border-color)'}`;
@@ -8981,6 +8988,7 @@ function renderPipelineKanban() {
           <span class="column-drag-handle" style="cursor: grab; color: var(--text-muted); font-size: 14px; user-select: none;">⋮⋮</span>
           <span class="column-title-text" style="font-weight: 700; font-size: 11px; text-transform: uppercase; color: var(--text-primary); font-family: var(--font-family-title); letter-spacing: 0.5px;">${stage.name}</span>
         </div>
+        <span class="kanban-collapse-chevron" style="cursor: pointer; color: var(--text-secondary); font-size: 9px; padding: 2px 4px; transition: transform 0.2s ease;">▾</span>
         <span class="column-actions-trigger" onclick="openStageSettings('${stage.id}', event)" style="cursor: pointer; color: var(--text-secondary); padding: 2px 4px; font-size: 14px;">⋮</span>
       </div>
       <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 4px; font-size: 10px; color: var(--text-secondary);">
@@ -8988,7 +8996,18 @@ function renderPipelineKanban() {
         <span class="column-summary-value">${formatCurrencyBRL(sumValue)}</span>
       </div>
     `;
-    
+
+    // Retrair/expandir a etapa tocando no cabeçalho — só faz sentido no
+    // layout empilhado do celular (no desktop as colunas ficam lado a lado
+    // e cabem na tela sem precisar disso), por isso o guard de largura.
+    header.onclick = (e) => {
+      if (window.innerWidth > 900) return;
+      if (e.target.closest('.column-actions-trigger') || e.target.closest('.column-drag-handle')) return;
+      const isCollapsed = col.classList.toggle('collapsed');
+      if (isCollapsed) kanbanCollapsedStagesMobile.add(stage.id);
+      else kanbanCollapsedStagesMobile.delete(stage.id);
+    };
+
     const cardsContainer = document.createElement('div');
     cardsContainer.className = 'kanban-cards-container';
     cardsContainer.setAttribute('data-stage-id', stage.id);
