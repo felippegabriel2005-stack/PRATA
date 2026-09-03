@@ -124,10 +124,45 @@ function computeCommercialFunnelFromLeads(leadsRows) {
   return { stages, discarded, total: rows.length };
 }
 
+// Motivos de perda: qualquer linha de leads_sales com loss_reason preenchido
+// conta, independente da etapa (não é só quem está em "Descartado" — um lead
+// pode ter um motivo registrado e ainda assim seguir em outra etapa). Mesma
+// regra usada em buildClientDetailedDataFromReal (script.js).
+function computeLossReasonsFromLeads(leadsRows) {
+  const counts = {};
+  (leadsRows || []).forEach(l => {
+    const reason = (l.loss_reason || '').toString().trim();
+    if (reason) counts[reason] = (counts[reason] || 0) + 1;
+  });
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+  const reasons = Object.keys(counts)
+    .map(name => ({ motivo: name, quantidade: counts[name], percentual: total > 0 ? Math.round((counts[name] / total) * 100) : 0 }))
+    .sort((a, b) => b.quantidade - a.quantidade);
+  return { motivos: reasons, total_com_motivo_registrado: total };
+}
+
 // Status simplificado (ROI + metas cadastradas) — não inclui tendência mês a
 // mês/atualização de dados/campos pendentes (isso é só o Score de Saúde
 // visual do painel, que roda no navegador). Suficiente pro nível de resposta
 // de uma consulta via API/chat.
+// targets.metric_name é um rótulo em português digitado por humano na tela
+// de Metas ("CTR", "CPA", "Taxa de Conversão", "ROAS", "Custo por conversa",
+// "CPL", "CPC" — nunca as chaves internas curtas tipo "ctr"/"convrate").
+// Sem essa normalização, actualByMetric[t.metric_name] nunca batia com nada
+// e toda meta cadastrada era silenciosamente ignorada na comparação meta x
+// realizado (mesma correção aplicada em script.js/computeClientStatusFromData).
+function normalizeMetricNameToKey(metricName) {
+  const key = (metricName || '').toString().trim().toLowerCase();
+  const map = {
+    'ctr': 'ctr', 'cpa': 'cpa', 'cpc': 'cpc', 'cpl': 'cpl', 'cpm': 'cpm', 'roas': 'roas',
+    'taxa de conversão': 'convrate', 'taxa de conversao': 'convrate',
+    'custo por conversa': 'custoPorConversa',
+    'investimento': 'invest', 'impressões': 'impress', 'impressoes': 'impress',
+    'cliques': 'clicks', 'leads': 'leads', 'conversões': 'convs', 'conversoes': 'convs'
+  };
+  return map[key] || key;
+}
+
 function quickStatus(invest, revenue, conversions, targets, actualByMetric) {
   const reasons = [];
   let severity = 0;
@@ -138,7 +173,7 @@ function quickStatus(invest, revenue, conversions, targets, actualByMetric) {
     if (conversions === 0) { reasons.push('Investimento sem nenhuma conversão de mídia registrada'); severity = 2; }
   }
   (targets || []).forEach(t => {
-    const actual = actualByMetric[t.metric_name];
+    const actual = actualByMetric[normalizeMetricNameToKey(t.metric_name)];
     const target = Number(t.target_value);
     if (actual === null || actual === undefined || !target) return;
     const rule = t.rule || '';
@@ -179,7 +214,9 @@ module.exports = {
   sourceLabel,
   COMMERCIAL_FUNNEL_STAGE_ORDER,
   computeCommercialFunnelFromLeads,
+  computeLossReasonsFromLeads,
   quickStatus,
+  normalizeMetricNameToKey,
   findClientSlug,
   todayBR
 };

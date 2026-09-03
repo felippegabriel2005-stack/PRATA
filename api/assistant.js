@@ -49,7 +49,7 @@ async function computeClientKpis(clientName, key) {
     sb(`targets?client_slug=eq.${slug}&select=*`, key)
   ]);
 
-  let invest = 0, impress = 0, clicks = 0, pageViews = 0, leads = 0, conversions = 0, mediaRevenue = 0;
+  let invest = 0, impress = 0, clicks = 0, pageViews = 0, leads = 0, conversions = 0, mediaRevenue = 0, messagesStarted = 0;
   campaigns.forEach(c => {
     invest += Number(c.invest) || 0;
     impress += Number(c.impressions) || 0;
@@ -58,6 +58,7 @@ async function computeClientKpis(clientName, key) {
     leads += Number(c.leads) || 0;
     conversions += Number(c.conversions) || 0;
     mediaRevenue += Number(c.revenue) || 0;
+    messagesStarted += Number(c.messages_started) || 0;
   });
 
   const unified = resolveUnifiedSalesAndRevenue(leadsRows, customFields, customFieldValues);
@@ -71,11 +72,13 @@ async function computeClientKpis(clientName, key) {
   const roi = invest > 0 ? ((revenue - invest) / invest) * 100 : null;
 
   const actualByMetric = {
-    invest, impress, clicks, views: pageViews, convs: conversions, cpa,
+    invest, impress, clicks, views: pageViews, leads, convs: conversions, cpa, cpl,
     cpc: clicks > 0 ? invest / clicks : null,
     cpm: impress > 0 ? (invest / impress) * 1000 : null,
     ctr: impress > 0 ? (clicks / impress) * 100 : null,
-    convrate: pageViews > 0 ? (conversions / pageViews) * 100 : null
+    convrate: pageViews > 0 ? (conversions / pageViews) * 100 : null,
+    roas: invest > 0 ? revenue / invest : null,
+    custoPorConversa: messagesStarted > 0 ? invest / messagesStarted : null
   };
   const { status, motivos } = quickStatus(invest, revenue, conversions, targets, actualByMetric);
 

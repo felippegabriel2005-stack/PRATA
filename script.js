@@ -82,6 +82,25 @@ function formatCurrencyThousands(val) {
 // texto — é isso que permite o score de saúde (computeClientHealthScore)
 // converter "quantos e quão graves são os problemas" num número 0-100, em
 // vez de só um status geral healthy/attention/critical.
+// targets.metric_name é um rótulo em português digitado por humano na tela
+// de Metas ("CTR", "CPA", "Taxa de Conversão", "ROAS", "Custo por conversa",
+// "CPL", "CPC" — nunca as chaves internas curtas tipo "ctr"/"convrate").
+// Sem essa normalização, actualByMetric[t.metric_name] nunca batia com nada
+// (era sempre undefined) e TODA meta cadastrada era silenciosamente
+// ignorada na comparação meta x realizado — a seção de metas existia na
+// tela, mas nunca influenciava status/score de saúde de verdade.
+function normalizeMetricNameToKey(metricName) {
+  const key = (metricName || '').toString().trim().toLowerCase();
+  const map = {
+    'ctr': 'ctr', 'cpa': 'cpa', 'cpc': 'cpc', 'cpl': 'cpl', 'cpm': 'cpm', 'roas': 'roas',
+    'taxa de conversão': 'convrate', 'taxa de conversao': 'convrate',
+    'custo por conversa': 'custoPorConversa',
+    'investimento': 'invest', 'impressões': 'impress', 'impressoes': 'impress',
+    'cliques': 'clicks', 'leads': 'leads', 'conversões': 'convs', 'conversoes': 'convs'
+  };
+  return map[key] || key;
+}
+
 function computeClientStatusFromData(raw, targetsRows) {
   const reasons = [];
   let severity = 0; // 0 = saudável, 1 = atenção, 2 = crítico
@@ -109,16 +128,20 @@ function computeClientStatusFromData(raw, targetsRows) {
     impress: raw.impressions,
     clicks: raw.clicks,
     views: raw.pageViews,
+    leads: raw.leads,
     convs: raw.conversions,
     cpa: raw.conversions > 0 ? raw.invest / raw.conversions : null,
     cpc: raw.clicks > 0 ? raw.invest / raw.clicks : null,
+    cpl: raw.leads > 0 ? raw.invest / raw.leads : null,
     cpm: raw.impressions > 0 ? (raw.invest / raw.impressions) * 1000 : null,
     ctr: raw.impressions > 0 ? (raw.clicks / raw.impressions) * 100 : null,
-    convrate: raw.pageViews > 0 ? (raw.conversions / raw.pageViews) * 100 : null
+    convrate: raw.pageViews > 0 ? (raw.conversions / raw.pageViews) * 100 : null,
+    roas: raw.invest > 0 ? raw.revenue / raw.invest : null,
+    custoPorConversa: raw.messagesStarted > 0 ? raw.invest / raw.messagesStarted : null
   };
 
   (targetsRows || []).forEach(t => {
-    const actual = actualByMetric[t.metric_name];
+    const actual = actualByMetric[normalizeMetricNameToKey(t.metric_name)];
     const target = Number(t.target_value);
     if (actual === null || actual === undefined || !target) return;
 
@@ -507,7 +530,7 @@ function renderDisqualificationReasons(data) {
 }
 
 function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, customFields, customFieldValues) {
-  let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0;
+  let totalInvest = 0, totalImpress = 0, totalClicks = 0, totalPageViews = 0, totalLeads = 0, totalConvs = 0, totalRevenue = 0, totalMessages = 0;
   const byPlatform = {};
   const byDate = {};
 
@@ -519,6 +542,7 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, cust
     totalLeads += Number(c.leads) || 0;
     totalConvs += Number(c.conversions) || 0;
     totalRevenue += Number(c.revenue) || 0;
+    totalMessages += Number(c.messages_started) || 0;
 
     const plat = c.platform || 'Outra';
     if (!byPlatform[plat]) byPlatform[plat] = { invest: 0, clicks: 0, convs: 0, leads: 0 };
@@ -686,6 +710,7 @@ function buildClientDetailedDataFromReal(campaigns, leadsRows, targetsRows, cust
     clicks: totalClicks,
     pageViews: totalPageViews,
     conversions: totalConvs,
+    messagesStarted: totalMessages,
     sales: salesResolved
   };
 
