@@ -2665,15 +2665,24 @@ function getAnalysisInsights(clientName, analysisName) {
 
 let usingRealCampaignData = false;
 
-async function loadConversaoCampaignsForClient(clientName, analysisName) {
+// startDate/endDate (opcionais): quando informados, filtra de verdade contra
+// campaign_metrics.date no Supabase (gte/lte) — antes esta função sempre
+// trazia o histórico inteiro do cliente, ignorando qualquer período
+// selecionado na tela (o filtro de período desta aba nunca filtrou nada de
+// verdade pra cliente com dado real; só mexia num "fator" de escala que só
+// existe pros dados fictícios de demonstração). Retorna { earliestDate,
+// latestDate } com o intervalo real coberto pelas linhas encontradas nesta
+// busca, pra quem chamar poder inicializar o seletor de período com o
+// intervalo de dados de verdade em vez de um mês fixo de demonstração.
+async function loadConversaoCampaignsForClient(clientName, analysisName, startDate, endDate) {
   conversaoCampaigns.length = 0;
   usingRealCampaignData = false;
 
   const clientSlug = clientSlugFromName(clientName) || slugify(clientName);
-  const { data, error } = await supabaseClient
-    .from('campaign_metrics')
-    .select('*')
-    .eq('client_slug', clientSlug);
+  let query = supabaseClient.from('campaign_metrics').select('*').eq('client_slug', clientSlug);
+  if (startDate) query = query.gte('date', formatDateISO(startDate));
+  if (endDate) query = query.lte('date', formatDateISO(endDate));
+  const { data, error } = await query;
 
   if (!error && data && data.length > 0) {
     let rows = data;
@@ -2687,6 +2696,7 @@ async function loadConversaoCampaignsForClient(clientName, analysisName) {
     }
 
     const grouped = {};
+    const rowDates = [];
     rows.forEach(r => {
       const key = `${r.campaign_name}||${r.platform}`;
       if (!grouped[key]) {
@@ -2701,11 +2711,16 @@ async function loadConversaoCampaignsForClient(clientName, analysisName) {
       grouped[key].views += Number(r.page_views) || 0;
       grouped[key].convs += Number(r.conversions) || 0;
       grouped[key].sales += Number(r.purchases) || 0;
+      if (r.date) rowDates.push(r.date);
     });
 
     conversaoCampaigns.push(...Object.values(grouped));
     usingRealCampaignData = true;
-    return;
+    rowDates.sort();
+    return {
+      earliestDate: rowDates.length ? new Date(rowDates[0] + 'T00:00:00') : null,
+      latestDate: rowDates.length ? new Date(rowDates[rowDates.length - 1] + 'T00:00:00') : null
+    };
   }
 
   // Fallback: sem dados importados ainda para este cliente, mantém os dados
@@ -2740,6 +2755,7 @@ async function loadConversaoCampaignsForClient(clientName, analysisName) {
       { id: 3, name: "Meta | Retargeting Dealer", platform: "Meta Ads", checked: false, invest: 8000, impress: 240000, clicks: 1800, views: 1500, convs: 48, sales: 24.00 }
     );
   }
+  return { earliestDate: null, latestDate: null };
 }
 
 let conversaoCampaigns = [];
@@ -2873,7 +2889,6 @@ async function selectAnalysis(clientName, analysisName, analysisId) {
 
     // Update client name in Conversão View Header
     document.getElementById('conv-c-welcome').innerText = clientName;
-    document.getElementById('conv-c-meta').innerText = `${analysisName} · Maio 2025`;
 
     // Breadcrumb dinâmico
     const breadcrumbClientEl = document.getElementById('conv-breadcrumb-client');
@@ -2887,27 +2902,46 @@ async function selectAnalysis(clientName, analysisName, analysisId) {
     // Init default filter values
     document.getElementById('conv-filter-platform').value = 'Todas';
     document.getElementById('conv-campaigns-search').value = '';
-    
-    // Reset period button and input fields to May 2025
+
+    // Reset provisório pro mês de demonstração — só fica valendo se o
+    // cliente não tiver dado real (ver abaixo); com dado real, é substituído
+    // pelo intervalo de datas de verdade coberto pelas campanhas.
     calendarStates['conv'].startDate = new Date(2025, 4, 1);
     calendarStates['conv'].endDate = new Date(2025, 4, 31);
     calendarStates['conv'].currentYear = 2025;
     calendarStates['conv'].currentMonth = 4;
-    
+
     document.getElementById('conv-period-btn-text').innerText = "01/05/2025 - 31/05/2025";
     document.getElementById('conv-period-start').value = "01/05/2025";
     document.getElementById('conv-period-end').value = "31/05/2025";
-    
-    // Load dynamic campaigns based on the client!
-    await loadConversaoCampaignsForClient(clientName, analysisName);
+    document.getElementById('conv-c-meta').innerText = `${analysisName} · Maio 2025`;
+
+    // Load dynamic campaigns based on the client! Sem startDate/endDate aqui
+    // de propósito: primeira carga sempre traz o histórico inteiro, pra
+    // descobrir o intervalo real de datas coberto (abaixo) — só muda pra um
+    // fetch filtrado quando o usuário de fato aplicar um período diferente.
+    const { earliestDate, latestDate } = await loadConversaoCampaignsForClient(clientName, analysisName);
 
     if (!usingRealCampaignData) {
       // Dados fictícios: seleciona as duas primeiras campanhas por padrão
       conversaoCampaigns.forEach((c, idx) => {
         c.checked = (idx < 2);
       });
-    }
+    } else if (earliestDate && latestDate) {
+      // Cliente com dado real: o período abre cobrindo do primeiro ao
+      // último registro de verdade — um mês fixo de demonstração não faz
+      // sentido pra dados reais, que podem estar em qualquer data.
+      calendarStates['conv'].startDate = earliestDate;
+      calendarStates['conv'].endDate = latestDate;
+      calendarStates['conv'].currentYear = latestDate.getFullYear();
+      calendarStates['conv'].currentMonth = latestDate.getMonth();
 
+      const periodLabel = `${formatDate(earliestDate)} - ${formatDate(latestDate)}`;
+      document.getElementById('conv-period-btn-text').innerText = periodLabel;
+      document.getElementById('conv-period-start').value = formatDate(earliestDate);
+      document.getElementById('conv-period-end').value = formatDate(latestDate);
+      document.getElementById('conv-c-meta').innerText = `${analysisName} · ${periodLabel}`;
+    }
 
     renderConvCampaignsDropdown();
     updateConvCampaignsCountText();
@@ -3245,15 +3279,15 @@ function setPeriodPreset(prefix, preset) {
   renderCalendarDaysGrid(prefix);
 }
 
-function applyPeriodFilter(prefix, event) {
+async function applyPeriodFilter(prefix, event) {
   if (event) event.stopPropagation();
   const dropdown = document.getElementById(`${prefix}-period-dropdown`);
   if (dropdown) dropdown.style.display = 'none';
-  
+
   const state = calendarStates[prefix];
   const startText = document.getElementById(`${prefix}-period-start`).value;
   const endText = document.getElementById(`${prefix}-period-end`).value;
-  
+
   const btnText = document.getElementById(`${prefix}-period-btn-text`);
   if (btnText) {
     if (startText && endText) {
@@ -3264,8 +3298,18 @@ function applyPeriodFilter(prefix, event) {
       btnText.innerText = "Maio 2025";
     }
   }
-  
+
   if (prefix === 'conv') {
+    // Cliente com dado real: o período só existia visualmente antes — mudar
+    // as datas não refazia a busca nenhuma, sempre mostrava o histórico
+    // inteiro (usingRealCampaignData travava o fator de escala em 1, e
+    // nada recarregava conversaoCampaigns filtrado). Agora refaz a busca de
+    // verdade contra campaign_metrics.date com o novo intervalo.
+    if (usingRealCampaignData) {
+      await loadConversaoCampaignsForClient(currentClient, currentAnalysis, state.startDate, state.endDate);
+      const metaEl = document.getElementById('conv-c-meta');
+      if (metaEl && btnText) metaEl.innerText = `${currentAnalysis} · ${btnText.innerText}`;
+    }
     updateConversaoMetrics();
   } else if (prefix === 'pai') {
     updateDashboardPaiForCustomPeriod(state.startDate, state.endDate);
