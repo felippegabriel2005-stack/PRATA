@@ -1,21 +1,22 @@
 // Template HTML do e-mail de Resumo Automático — precisa funcionar em
 // clientes de e-mail com CSS limitado (Gmail à frente): layout em
 // <table>, tudo inline, sem JS/CSS externo/grid/fontes obrigatórias.
-// Visual "dark premium" do PRATA (fundo grafite, cards discretos, texto
-// branco/prata, accent glacial, verde/amarelo/vermelho só pra status).
+// Visual claro (fundo branco, combina melhor com o tema padrão do Gmail
+// que o dark premium do app) — cards em cinza bem claro, texto grafite,
+// verde/amarelo/vermelho só pra status.
 
 const COLORS = {
-  bg: '#030303',
-  card: '#0d0d11',
-  cardBorder: '#1b1b22',
-  divider: '#18181f',
-  textPrimary: '#f4f4f5',
-  textSecondary: '#a1a1aa',
-  textMuted: '#52525b',
-  green: '#10b981',
-  yellow: '#f59e0b',
-  red: '#ef4444',
-  accent: '#8ecbff'
+  bg: '#ffffff',
+  card: '#f7f7f8',
+  cardBorder: '#e4e4e7',
+  divider: '#e4e4e7',
+  textPrimary: '#18181b',
+  textSecondary: '#52525b',
+  textMuted: '#8b8b93',
+  green: '#0e9f6e',
+  yellow: '#c27803',
+  red: '#dc2626',
+  accent: '#2563eb'
 };
 
 function esc(str) {
@@ -134,15 +135,22 @@ function buildAttentionToday(data) {
     return sectionTitle('O que precisa da sua atenção hoje', '🎯') +
       `<tr><td style="padding:0 24px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:${COLORS.textSecondary};">Tudo certo por aqui — nenhum ponto de atenção identificado no momento. ✓</td></tr>`;
   }
+  // Compacto de propósito: no máximo 2 motivos por cliente (o mais
+  // importante geralmente já está entre os dois primeiros, já que
+  // computeAgencyHealthAndAlerts lista ROI/meta antes de mês-a-mês/
+  // pendência) + no máximo 5 clientes, senão o e-mail fica comprido demais.
   let html = sectionTitle('O que precisa da sua atenção hoje', '🎯');
-  data.attentionToday.forEach(item => {
+  data.attentionToday.slice(0, 5).forEach(item => {
     const s = statusLabel(item.severity);
+    const shown = item.messages.slice(0, 2);
+    const extra = item.messages.length - shown.length;
     html += `
-      <tr><td style="padding:8px 24px;">
-        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${COLORS.card};border:1px solid ${COLORS.cardBorder};border-radius:8px;">
-          <tr><td style="padding:12px 16px;font-family:Arial,Helvetica,sans-serif;">
-            <div style="font-size:12px;font-weight:700;color:${s.color};text-transform:uppercase;letter-spacing:.3px;">${esc(item.clientName)}</div>
-            ${item.messages.map(m => `<div style="font-size:12px;color:${COLORS.textSecondary};margin-top:5px;">• ${esc(m)}</div>`).join('')}
+      <tr><td style="padding:5px 24px;">
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${COLORS.card};border:1px solid ${COLORS.cardBorder};border-left:3px solid ${s.color};border-radius:6px;">
+          <tr><td style="padding:9px 14px;font-family:Arial,Helvetica,sans-serif;">
+            <div style="font-size:11px;font-weight:700;color:${s.color};text-transform:uppercase;letter-spacing:.3px;">${esc(item.clientName)}</div>
+            ${shown.map(m => `<div style="font-size:11px;color:${COLORS.textSecondary};margin-top:3px;line-height:1.4;">• ${esc(m)}</div>`).join('')}
+            ${extra > 0 ? `<div style="font-size:10px;color:${COLORS.textMuted};margin-top:3px;">+ ${extra} outro(s) ponto(s)</div>` : ''}
           </td></tr>
         </table>
       </td></tr>`;
@@ -275,7 +283,7 @@ function buildDigestEmailHtml(data, config, meta) {
           <tr><td style="padding:28px 24px 8px 24px;border-top:1px solid ${COLORS.divider};margin-top:20px;">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>
               <td>
-                <a href="${dashboardUrl}" style="display:inline-block;background:${COLORS.textPrimary};color:#0a0a0a;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;padding:10px 18px;border-radius:8px;">Abrir Dashboard no PRATA →</a>
+                <a href="${dashboardUrl}" style="display:inline-block;background:${COLORS.textPrimary};color:#ffffff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;padding:10px 18px;border-radius:8px;">Abrir Dashboard no PRATA →</a>
               </td>
             </tr></table>
             ${whatsappUrl ? `<div style="margin-top:14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;">

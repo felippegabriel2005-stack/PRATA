@@ -112,8 +112,12 @@ SELECT
     "ai_insights": true
   }'::jsonb,
   'felippegabriel2005@gmail.com', 'felippegabriel2005@gmail.com',
-  -- next_send_at inicial: próximo dia útil às 08:00 America/Sao_Paulo,
-  -- calculado aqui só como ponto de partida (o backend recalcula depois de
-  -- cada envio com a mesma regra usada em toda a automação).
-  (now() AT TIME ZONE 'America/Sao_Paulo')::date + INTERVAL '1 day' + INTERVAL '8 hours'
+  -- next_send_at inicial: próximo dia às 08:00 America/Sao_Paulo (ponto de
+  -- partida só — o backend recalcula depois de cada envio, já considerando
+  -- dias úteis). O "AT TIME ZONE" final é essencial: sem ele, o timestamp
+  -- "naive" (08:00 de amanhã, sem timezone) seria reinterpretado no fuso da
+  -- sessão do Postgres (normalmente UTC) ao virar timestamptz — resultando
+  -- em 08:00 UTC (= 05:00 em SP) em vez de 08:00 em SP de verdade. Esse bug
+  -- existiu numa versão anterior desta migration; corrigido aqui.
+  (((now() AT TIME ZONE 'America/Sao_Paulo')::date + INTERVAL '1 day' + INTERVAL '8 hours') AT TIME ZONE 'America/Sao_Paulo')
 WHERE NOT EXISTS (SELECT 1 FROM email_digest_configs WHERE name = 'Resumo diário da agência');

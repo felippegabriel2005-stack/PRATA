@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRATA - Revenue Tracking & Intelligence</title>
-  <link rel="stylesheet" href="style.css?v=65">
+  <link rel="stylesheet" href="style.css?v=66">
 </head>
 <body>
   <!-- TELA DE LOGIN -->
@@ -2216,17 +2216,23 @@
           </div>
           <div class="form-group">
             <label class="form-label" for="dc-client-scope">Clientes</label>
-            <select id="dc-client-scope" class="form-select">
+            <select id="dc-client-scope" class="form-select" onchange="handleDigestClientScopeChange()">
               <option value="all_active" selected>Todos os clientes ativos</option>
               <option value="selected">Clientes selecionados</option>
             </select>
           </div>
         </div>
 
+        <div class="form-group" id="dc-selected-clients-group" style="display: none;">
+          <label class="form-label">Selecione os clientes</label>
+          <div id="dc-selected-clients-list" style="display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); padding: 10px;">
+            <!-- JS: renderDigestClientCheckboxes() -->
+          </div>
+        </div>
+
         <div class="form-group">
           <label class="form-label">Destinatário</label>
           <input type="text" class="form-input" value="felippegabriel2005@gmail.com" readonly style="opacity: .7; cursor: not-allowed;">
-          <span style="font-size: 10px; color: var(--color-yellow); display: block; margin-top: 4px;">Ambiente de teste — nesta versão, o envio é travado neste endereço no backend, mesmo que este campo seja alterado.</span>
         </div>
 
         <div class="form-group">
@@ -2480,6 +2486,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="script.js?v=65"></script>
+  <script src="script.js?v=66"></script>
 </body>
 </html>

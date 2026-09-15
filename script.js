@@ -8121,6 +8121,30 @@ function handleDigestPeriodTypeChange() {
   document.getElementById('dc-custom-period-group').style.display = isCustom ? 'block' : 'none';
 }
 
+function handleDigestClientScopeChange() {
+  const isSelected = document.getElementById('dc-client-scope').value === 'selected';
+  document.getElementById('dc-selected-clients-group').style.display = isSelected ? 'block' : 'none';
+}
+
+// Lista de checkboxes com todos os clientes reais (allClients já vem
+// carregado globalmente) — `selectedSlugs` vem preenchido só ao editar
+// uma automação existente.
+function renderDigestClientCheckboxes(selectedSlugs) {
+  const container = document.getElementById('dc-selected-clients-list');
+  if (!container) return;
+  const selected = new Set(selectedSlugs || []);
+  if (!allClients.length) {
+    container.innerHTML = `<span style="font-size:11px;color:var(--text-muted);">Nenhum cliente cadastrado ainda.</span>`;
+    return;
+  }
+  container.innerHTML = allClients.map(c => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;">
+      <input type="checkbox" class="dc-client-checkbox" value="${escapeHtml(c.slug)}" ${selected.has(c.slug) ? 'checked' : ''}>
+      ${escapeHtml(c.name)}
+    </label>
+  `).join('');
+}
+
 const DIGEST_SECTION_KEYS = ['executive_summary', 'attention_today', 'portfolio_health', 'client_performance', 'commercial_pipeline', 'data_pending', 'ai_insights'];
 
 function openDigestConfigModal(configId) {
@@ -8142,10 +8166,13 @@ function openDigestConfigModal(configId) {
     document.getElementById('dc-client-scope').value = config.client_scope;
     const sections = config.sections || {};
     DIGEST_SECTION_KEYS.forEach(k => { document.getElementById(`dc-sec-${k}`).checked = sections[k] !== false; });
+    renderDigestClientCheckboxes(config.selected_clients || []);
   } else {
     DIGEST_SECTION_KEYS.forEach(k => { document.getElementById(`dc-sec-${k}`).checked = true; });
+    renderDigestClientCheckboxes([]);
   }
   handleDigestPeriodTypeChange();
+  handleDigestClientScopeChange();
   document.getElementById('digest-config-modal').style.display = 'flex';
 }
 
@@ -8156,6 +8183,10 @@ function closeDigestConfigModal() {
 function collectDigestConfigFromForm() {
   const sections = {};
   DIGEST_SECTION_KEYS.forEach(k => { sections[k] = document.getElementById(`dc-sec-${k}`).checked; });
+  const clientScope = document.getElementById('dc-client-scope').value;
+  const selectedClients = clientScope === 'selected'
+    ? Array.from(document.querySelectorAll('.dc-client-checkbox:checked')).map(el => el.value)
+    : [];
   return {
     name: document.getElementById('dc-name').value.trim() || 'Resumo automático',
     active: document.getElementById('dc-active').value === 'true',
@@ -8166,8 +8197,8 @@ function collectDigestConfigFromForm() {
     period_custom_from: document.getElementById('dc-period-from').value || null,
     period_custom_to: document.getElementById('dc-period-to').value || null,
     comparison_type: document.getElementById('dc-comparison').value,
-    client_scope: document.getElementById('dc-client-scope').value,
-    selected_clients: [],
+    client_scope: clientScope,
+    selected_clients: selectedClients,
     sections,
     recipient_email: 'felippegabriel2005@gmail.com',
     updated_at: new Date().toISOString()

@@ -184,7 +184,7 @@ async function computeAgencyDigestData(key, config) {
     attentionByClient[a.clientSlug].messages.push(a.message);
     if (a.severity === 'critical') attentionByClient[a.clientSlug].severity = 'critical';
   });
-  const attentionToday = Object.values(attentionByClient).slice(0, 8);
+  const attentionToday = Object.values(attentionByClient).slice(0, 5);
 
   // Tabela da carteira — KPI por cliente no período escolhido.
   const clientTable = scopeClients.map(c => {
