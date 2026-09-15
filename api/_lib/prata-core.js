@@ -9,14 +9,34 @@
 
 const SUPABASE_URL = 'https://ldcpwadnvuotacwnkcop.supabase.co';
 
-async function sb(path, key) {
+// GET por padrão (2 args, como sempre foi — retorna [] em erro, nunca
+// lança). Passando `options.method` (POST/PATCH/DELETE) + `options.body`,
+// vira escrita: erros então LANÇAM (quem escreve precisa saber se falhou,
+// diferente de uma leitura que pode tolerar vir vazia).
+async function sb(path, key, options) {
+  const opts = options || {};
+  const isWrite = opts.method && opts.method !== 'GET';
   try {
+    const headers = { apikey: key, Authorization: `Bearer ${key}`, ...(opts.headers || {}) };
+    if (isWrite) {
+      headers['Content-Type'] = 'application/json';
+      headers['Prefer'] = opts.prefer || 'return=representation';
+    }
     const resp = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-      headers: { apikey: key, Authorization: `Bearer ${key}` }
+      method: opts.method || 'GET',
+      headers,
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined
     });
-    if (!resp.ok) return [];
-    return await resp.json();
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      if (isWrite) throw new Error(`Supabase ${opts.method} ${path} falhou (${resp.status}): ${errText.slice(0, 300)}`);
+      return [];
+    }
+    if (resp.status === 204) return [];
+    const text = await resp.text();
+    return text ? JSON.parse(text) : [];
   } catch (e) {
+    if (isWrite) throw e;
     console.error('Erro ao consultar Supabase:', path, e);
     return [];
   }
@@ -203,6 +223,372 @@ function todayBR() {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
 }
 
+// ==========================================================================
+// Score de Saúde / Alertas da carteira — porte de script.js
+// (computeClientStatusFromData / HEALTH_SCORE_PENALTY / computePortfolioAlerts)
+// pro servidor, usado pelo Resumo Automático (e-mail) pra nunca mostrar um
+// status diferente do que o Dashboard Pai mostra na tela. Mesma regra,
+// reescrita só pra não depender de variável global (`allClients` no
+// browser vira o parâmetro `clients` aqui).
+// ==========================================================================
+
+function formatNumber(valor) {
+  return Math.round(valor).toLocaleString('pt-BR');
+}
+
+function formatCurrency(val) {
+  return 'R$' + formatNumber(Math.round(val));
+}
+
+function formatDateBR(date) {
+  if (!date) return '';
+  const d = String(date.getDate()).padStart(2, '0');
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const y = date.getFullYear();
+  return `${d}/${m}/${y}`;
+}
+
+function formatDateISO(date) {
+  if (!date) return '';
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function computePeriodDateForFrequency(frequency, refDate) {
+  const d = new Date(refDate);
+  d.setHours(0, 0, 0, 0);
+  if (frequency === 'weekly') {
+    const day = d.getDay();
+    const diffToMonday = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diffToMonday);
+  } else if (frequency === 'biweekly') {
+    d.setDate(d.getDate() <= 15 ? 1 : 16);
+  } else if (frequency === 'monthly') {
+    d.setDate(1);
+  }
+  return d;
+}
+
+const HEALTH_SCORE_PENALTY = { critical: 25, attention: 10 };
+
+function computeHealthScoreFromReasons(reasons) {
+  let score = 100;
+  (reasons || []).forEach(r => { score -= HEALTH_SCORE_PENALTY[r.severity] || 0; });
+  return Math.max(0, Math.min(100, score));
+}
+
+function healthStatusFromScore(score) {
+  if (score >= 80) return 'healthy';
+  if (score >= 50) return 'attention';
+  return 'critical';
+}
+
+// ROI/metas de UM cliente a partir dos totais já agregados (raw) — mesma
+// regra do Dashboard Pai/Filho.
+function computeClientStatusFromData(raw, targetsRows) {
+  const reasons = [];
+  let severity = 0;
+
+  if (raw.invest > 0) {
+    const roi = ((raw.revenue - raw.invest) / raw.invest) * 100;
+    if (roi < 0) {
+      reasons.push({ text: `ROI negativo (${Math.round(roi)}%): o investimento de ${formatCurrency(raw.invest)} ainda não voltou em receita.`, severity: 'critical' });
+      severity = Math.max(severity, 2);
+    } else if (roi < 50) {
+      reasons.push({ text: `ROI baixo (${Math.round(roi)}%), abaixo do que se espera de uma campanha saudável.`, severity: 'attention' });
+      severity = Math.max(severity, 1);
+    }
+    if (raw.conversions === 0) {
+      reasons.push({ text: `Investimento de ${formatCurrency(raw.invest)} sem nenhuma conversão registrada até agora.`, severity: 'critical' });
+      severity = Math.max(severity, 2);
+    }
+  }
+
+  const actualByMetric = {
+    invest: raw.invest, impress: raw.impressions, clicks: raw.clicks, views: raw.pageViews, leads: raw.leads, convs: raw.conversions,
+    cpa: raw.conversions > 0 ? raw.invest / raw.conversions : null,
+    cpc: raw.clicks > 0 ? raw.invest / raw.clicks : null,
+    cpl: raw.leads > 0 ? raw.invest / raw.leads : null,
+    cpm: raw.impressions > 0 ? (raw.invest / raw.impressions) * 1000 : null,
+    ctr: raw.impressions > 0 ? (raw.clicks / raw.impressions) * 100 : null,
+    convrate: raw.pageViews > 0 ? (raw.conversions / raw.pageViews) * 100 : null,
+    roas: raw.invest > 0 ? raw.revenue / raw.invest : null,
+    custoPorConversa: raw.messagesStarted > 0 ? raw.invest / raw.messagesStarted : null
+  };
+
+  (targetsRows || []).forEach(t => {
+    const actual = actualByMetric[normalizeMetricNameToKey(t.metric_name)];
+    const target = Number(t.target_value);
+    if (actual === null || actual === undefined || !target) return;
+    const rule = t.rule || '';
+    let ratio = null;
+    if (rule.includes('Menor')) ratio = actual / target;
+    else if (rule.includes('Maior')) ratio = target / actual;
+    if (ratio === null) return;
+    const pctOff = Math.round(Math.abs(ratio - 1) * 100);
+    if (ratio > 1.3) {
+      reasons.push({ text: `${t.metric_name.toUpperCase()} está ${pctOff}% fora da meta definida em "${t.objective}".`, severity: 'critical' });
+      severity = Math.max(severity, 2);
+    } else if (ratio > 1.1) {
+      reasons.push({ text: `${t.metric_name.toUpperCase()} está levemente fora da meta definida em "${t.objective}" (${pctOff}%).`, severity: 'attention' });
+      severity = Math.max(severity, 1);
+    }
+  });
+
+  const status = severity === 2 ? 'critical' : severity === 1 ? 'attention' : 'healthy';
+  return { status, reasons };
+}
+
+const PORTFOLIO_ALERT_THRESHOLDS = {
+  cpaIncreasePct: 30,
+  revenueDropPct: 15,
+  leadsDropPct: 30,
+  staleSalesDays: 3,
+  staleImportDays: 7,
+  lowConversionInvest: 1000
+};
+
+function groupBy(rows, key) {
+  const out = {};
+  (rows || []).forEach(r => { const k = r[key]; if (!k) return; (out[k] = out[k] || []).push(r); });
+  return out;
+}
+
+// Score de Saúde + alertas de TODA a carteira — porte 1:1 de
+// computePortfolioAlerts (script.js), só que autocontido (calcula o status
+// ROI/metas de cada cliente aqui dentro, em vez de esperar que outra função
+// já tenha deixado isso pronto em `client.statusReasons`, como o browser
+// faz). `clients` é [{slug, name}]; os outros arrays são as tabelas cruas
+// já filtradas por workspace (não por período — alertas de mês a mês e
+// pendência de dado precisam do histórico completo pra comparar).
+function computeAgencyHealthAndAlerts({ clients, campaigns, leadsRows, customFields, customFieldValues, targets }) {
+  const now = new Date();
+  const curMonthKey = formatDateISO(new Date(now.getFullYear(), now.getMonth(), 1)).slice(0, 7);
+  const prevMonthKey = formatDateISO(new Date(now.getFullYear(), now.getMonth() - 1, 1)).slice(0, 7);
+
+  const campaignsBySlug = groupBy(campaigns, 'client_slug');
+  const leadsBySlug = groupBy(leadsRows, 'client_slug');
+  const fieldsBySlug = groupBy(customFields, 'client_slug');
+  const targetsBySlug = groupBy(targets, 'client_slug');
+  const valuesByField = groupBy(customFieldValues, 'field_id');
+
+  const alerts = [];
+  const reasonsBySlug = {};
+  clients.forEach(c => { reasonsBySlug[c.slug] = []; });
+
+  function addReason(slug, severity, text) {
+    if (!reasonsBySlug[slug]) reasonsBySlug[slug] = [];
+    reasonsBySlug[slug].push({ severity, text });
+    const client = clients.find(c => c.slug === slug);
+    alerts.push({ severity, clientSlug: slug, clientName: client ? client.name : slug, message: text });
+  }
+
+  // --- 1) Status ROI/metas por cliente (equivalente a
+  // updateClientStatusesFromCampaigns + computeClientStatusFromData) ---
+  const rawBySlug = {};
+  clients.forEach(client => {
+    const slug = client.slug;
+    const myCampaigns = campaignsBySlug[slug] || [];
+    let invest = 0, impressions = 0, clicks = 0, pageViews = 0, leads = 0, conversions = 0, mediaRevenue = 0, messagesStarted = 0;
+    myCampaigns.forEach(c => {
+      invest += Number(c.invest) || 0;
+      impressions += Number(c.impressions) || 0;
+      clicks += Number(c.clicks) || 0;
+      pageViews += Number(c.page_views) || 0;
+      leads += Number(c.leads) || 0;
+      conversions += Number(c.conversions) || 0;
+      mediaRevenue += Number(c.revenue) || 0;
+      messagesStarted += Number(c.messages_started) || 0;
+    });
+
+    const unified = resolveUnifiedSalesAndRevenue(leadsBySlug[slug] || [], fieldsBySlug[slug] || [], customFieldValues || []);
+    const revenue = unified.revenue.records.length ? unified.revenue.total : mediaRevenue;
+    const raw = { invest, revenue, leads, impressions, clicks, pageViews, conversions, messagesStarted };
+    rawBySlug[slug] = raw;
+
+    const { reasons } = computeClientStatusFromData(raw, targetsBySlug[slug] || []);
+    reasons.forEach(r => addReason(slug, r.severity, r.text));
+  });
+
+  // --- 2) Mês atual x mês anterior (CPA/receita/leads) + campanha parada ---
+  const bySlugMonth = {};
+  const bySlugCampaignThisMonth = {};
+  const latestDateBySlug = {};
+
+  (campaigns || []).forEach(c => {
+    const slug = c.client_slug;
+    if (!slug || !c.date) return;
+    const month = c.date.slice(0, 7);
+    if (!latestDateBySlug[slug] || c.date > latestDateBySlug[slug]) latestDateBySlug[slug] = c.date;
+    if (!bySlugMonth[slug]) bySlugMonth[slug] = {};
+    if (!bySlugMonth[slug][month]) bySlugMonth[slug][month] = { invest: 0, clicks: 0, convs: 0, revenue: 0, leads: 0 };
+    const m = bySlugMonth[slug][month];
+    m.invest += Number(c.invest) || 0;
+    m.clicks += Number(c.clicks) || 0;
+    m.convs += Number(c.conversions) || 0;
+    m.revenue += Number(c.revenue) || 0;
+    m.leads += Number(c.leads) || 0;
+
+    if (month === curMonthKey) {
+      if (!bySlugCampaignThisMonth[slug]) bySlugCampaignThisMonth[slug] = {};
+      const key = `${c.campaign_name}||${c.platform}`;
+      if (!bySlugCampaignThisMonth[slug][key]) bySlugCampaignThisMonth[slug][key] = { name: c.campaign_name, invest: 0, convs: 0 };
+      bySlugCampaignThisMonth[slug][key].invest += Number(c.invest) || 0;
+      bySlugCampaignThisMonth[slug][key].convs += Number(c.conversions) || 0;
+    }
+  });
+
+  clients.forEach(client => {
+    const slug = client.slug;
+    const cur = (bySlugMonth[slug] || {})[curMonthKey];
+    const prev = (bySlugMonth[slug] || {})[prevMonthKey];
+
+    if (cur && prev) {
+      const curCpa = cur.convs > 0 ? cur.invest / cur.convs : null;
+      const prevCpa = prev.convs > 0 ? prev.invest / prev.convs : null;
+      if (curCpa !== null && prevCpa !== null && prevCpa > 0) {
+        const pct = ((curCpa - prevCpa) / prevCpa) * 100;
+        if (pct > PORTFOLIO_ALERT_THRESHOLDS.cpaIncreasePct) {
+          addReason(slug, 'attention', `Aumento de ${Math.round(pct)}% no CPA em relação ao mês anterior (${formatCurrency(prevCpa)} → ${formatCurrency(curCpa)}).`);
+        }
+      }
+      if (prev.revenue > 0 && cur.revenue < prev.revenue) {
+        const pct = ((prev.revenue - cur.revenue) / prev.revenue) * 100;
+        if (pct > PORTFOLIO_ALERT_THRESHOLDS.revenueDropPct) {
+          addReason(slug, 'attention', `Receita caiu ${Math.round(pct)}% em relação ao mês anterior (${formatCurrency(prev.revenue)} → ${formatCurrency(cur.revenue)}).`);
+        }
+      }
+      if (prev.leads > 0 && cur.leads < prev.leads) {
+        const pct = ((prev.leads - cur.leads) / prev.leads) * 100;
+        if (pct > PORTFOLIO_ALERT_THRESHOLDS.leadsDropPct) {
+          addReason(slug, 'attention', `Queda de ${Math.round(pct)}% nos leads em relação ao mês anterior (${formatNumber(prev.leads)} → ${formatNumber(cur.leads)}).`);
+        }
+      }
+    }
+
+    const latest = latestDateBySlug[slug];
+    if (latest) {
+      const daysSince = Math.floor((now - new Date(latest + 'T00:00:00')) / 86400000);
+      if (daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleImportDays) {
+        addReason(slug, 'attention', `Dados importados desatualizados — última linha de campanha é de ${formatDateBR(new Date(latest + 'T00:00:00'))} (${daysSince} dias atrás).`);
+      }
+    }
+
+    Object.values(bySlugCampaignThisMonth[slug] || {}).forEach(camp => {
+      if (camp.invest >= PORTFOLIO_ALERT_THRESHOLDS.lowConversionInvest && camp.convs === 0) {
+        addReason(slug, 'attention', `Campanha "${camp.name}" com ${formatCurrency(camp.invest)} investidos este mês e nenhuma conversão registrada.`);
+      }
+    });
+  });
+
+  // --- 3) Campos personalizados: obrigatório pendente + vendas sem atualizar ---
+  clients.forEach(client => {
+    (fieldsBySlug[client.slug] || []).forEach(field => {
+      const values = valuesByField[field.id] || [];
+      const isDailySalesField = field.metric_mapping === 'sales' && field.frequency === 'daily';
+      if (field.required && field.frequency !== 'on_demand' && !isDailySalesField) {
+        const periodIso = formatDateISO(computePeriodDateForFrequency(field.frequency, now));
+        const hasValue = values.some(v => v.period_date === periodIso);
+        if (!hasValue) {
+          addReason(client.slug, 'attention', `Campo obrigatório "${field.name}" pendente de preenchimento.`);
+        }
+      }
+      if (isDailySalesField) {
+        const lastFill = values.map(v => v.period_date).filter(Boolean).sort().reverse()[0];
+        const daysSince = lastFill ? Math.floor((now - new Date(lastFill + 'T00:00:00')) / 86400000) : null;
+        if (daysSince === null || daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleSalesDays) {
+          const prefix = daysSince === null ? 'Nunca preencheu' : `Está há ${daysSince} dia(s) sem preencher`;
+          addReason(client.slug, 'attention', `${prefix} vendas ("${field.name}").`);
+        }
+      }
+    });
+  });
+
+  // --- 4) Completude: cliente sem NENHUM dado configurado ainda ---
+  const hasCampaignBySlug = new Set((campaigns || []).map(c => c.client_slug));
+  const hasFieldBySlug = new Set((customFields || []).map(f => f.client_slug));
+  const hasLeadsBySlug = new Set((leadsRows || []).map(l => l.client_slug));
+  clients.forEach(client => {
+    const slug = client.slug;
+    if (!hasCampaignBySlug.has(slug) && !hasFieldBySlug.has(slug) && !hasLeadsBySlug.has(slug)) {
+      addReason(slug, 'critical', 'Nenhum dado importado ou campo personalizado configurado ainda para este cliente.');
+    }
+  });
+
+  const clientsWithHealth = clients.map(client => {
+    const reasons = (reasonsBySlug[client.slug] || []).slice().sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'critical' ? -1 : 1));
+    const healthScore = computeHealthScoreFromReasons(reasons);
+    return {
+      slug: client.slug,
+      name: client.name,
+      healthScore,
+      status: healthStatusFromScore(healthScore),
+      statusReasons: reasons,
+      raw: rawBySlug[client.slug] || { invest: 0, revenue: 0, leads: 0, impressions: 0, clicks: 0, pageViews: 0, conversions: 0, messagesStarted: 0 }
+    };
+  });
+
+  alerts.sort((a, b) => {
+    if (a.severity !== b.severity) return a.severity === 'critical' ? -1 : 1;
+    return a.clientName.localeCompare(b.clientName);
+  });
+
+  return { clientsWithHealth, alerts: alerts.slice(0, 40) };
+}
+
+// Pendências de dados — versão estruturada (não texto) da mesma checagem do
+// passo 3 de computeAgencyHealthAndAlerts, pro bloco "Atualização dos
+// clientes" do Resumo Automático conseguir montar uma lista limpa em vez de
+// ter que reinterpretar as strings dos alertas.
+function computeDataPendencies(clients, customFields, customFieldValues) {
+  const now = new Date();
+  const fieldsBySlug = groupBy(customFields, 'client_slug');
+  const valuesByField = groupBy(customFieldValues, 'field_id');
+  const clientBySlug = {};
+  clients.forEach(c => { clientBySlug[c.slug] = c.name; });
+
+  const items = [];
+  clients.forEach(client => {
+    (fieldsBySlug[client.slug] || []).forEach(field => {
+      if (!field.required || field.frequency === 'on_demand') return;
+      const values = valuesByField[field.id] || [];
+      const isDailySalesField = field.metric_mapping === 'sales' && field.frequency === 'daily';
+
+      if (isDailySalesField) {
+        const lastFill = values.map(v => v.period_date).filter(Boolean).sort().reverse()[0];
+        const daysSince = lastFill ? Math.floor((now - new Date(lastFill + 'T00:00:00')) / 86400000) : null;
+        const isStale = daysSince === null || daysSince >= PORTFOLIO_ALERT_THRESHOLDS.staleSalesDays;
+        items.push({
+          clientName: client.name,
+          fieldName: field.name,
+          status: isStale ? 'stale' : 'ok',
+          lastFilledDate: lastFill || null,
+          daysSince
+        });
+      } else {
+        const periodIso = formatDateISO(computePeriodDateForFrequency(field.frequency, now));
+        const hasValue = values.some(v => v.period_date === periodIso);
+        const lastFill = values.map(v => v.period_date).filter(Boolean).sort().reverse()[0];
+        items.push({
+          clientName: client.name,
+          fieldName: field.name,
+          status: hasValue ? 'ok' : 'pending',
+          lastFilledDate: lastFill || null,
+          daysSince: lastFill ? Math.floor((now - new Date(lastFill + 'T00:00:00')) / 86400000) : null
+        });
+      }
+    });
+  });
+
+  const upToDateCount = items.filter(i => i.status === 'ok').length;
+  const pendingCount = items.filter(i => i.status === 'pending').length;
+  const staleCount = items.filter(i => i.status === 'stale').length;
+
+  return { items, upToDateCount, pendingCount, staleCount };
+}
+
 module.exports = {
   SUPABASE_URL,
   sb,
@@ -218,5 +604,17 @@ module.exports = {
   quickStatus,
   normalizeMetricNameToKey,
   findClientSlug,
-  todayBR
+  todayBR,
+  formatNumber,
+  formatCurrency,
+  formatDateBR,
+  formatDateISO,
+  computePeriodDateForFrequency,
+  HEALTH_SCORE_PENALTY,
+  computeHealthScoreFromReasons,
+  healthStatusFromScore,
+  computeClientStatusFromData,
+  PORTFOLIO_ALERT_THRESHOLDS,
+  computeAgencyHealthAndAlerts,
+  computeDataPendencies
 };

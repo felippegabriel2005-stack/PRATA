@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRATA - Revenue Tracking & Intelligence</title>
-  <link rel="stylesheet" href="style.css?v=64">
+  <link rel="stylesheet" href="style.css?v=65">
 </head>
 <body>
   <!-- TELA DE LOGIN -->
@@ -1209,6 +1209,13 @@
           </div>
         </header>
 
+        <!-- Abas internas de Relatórios -->
+        <div class="relatorios-tabs" style="display: flex; gap: 8px; margin-bottom: 20px; border-bottom: 1px solid var(--divider-color);">
+          <button class="relatorios-tab-btn active" id="relatorios-tab-gerar" onclick="selectRelatoriosTab('gerar')">Gerar relatório</button>
+          <button class="relatorios-tab-btn" id="relatorios-tab-envios" onclick="selectRelatoriosTab('envios')">Envios automáticos</button>
+        </div>
+
+        <div id="relatorios-panel-gerar">
         <!-- IMPORTAÇÃO E EXPORTAÇÃO DE DADOS -->
         <div class="report-card" style="margin-bottom: 20px;">
           <h3 class="report-section-title">Importar dados para o PRATA</h3>
@@ -1443,6 +1450,43 @@
 
           </div>
         </div>
+        </div><!-- /relatorios-panel-gerar -->
+
+        <!-- ENVIOS AUTOMÁTICOS ("O PRATA leva o que importa até você.") -->
+        <div id="relatorios-panel-envios" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; gap: 16px; flex-wrap: wrap;">
+            <div>
+              <h2 style="font-family: var(--font-family-title); font-size: 16px; font-weight: 700; color: var(--text-primary);">Envios automáticos</h2>
+              <p style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Receba atualizações da sua operação sem precisar abrir o PRATA.</p>
+            </div>
+            <button class="pink-btn" onclick="openDigestConfigModal()">+ Novo envio automático</button>
+          </div>
+
+          <div id="digest-configs-list" style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- JS: renderDigestConfigsList() -->
+          </div>
+
+          <div class="section-separator" style="margin: 28px 0;"><div class="separator-diamond"></div></div>
+
+          <h3 class="report-section-title">Histórico de envios</h3>
+          <div class="table-wrapper" style="margin-top: 10px;">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th>Envio</th>
+                  <th>Data</th>
+                  <th>Status</th>
+                  <th>Destinatário</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="digest-history-tbody">
+                <!-- JS: renderDigestHistory() -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
       </div>
 
       <!-- ========================================== -->
@@ -2106,6 +2150,109 @@
     </div>
   </div>
 
+  <!-- MODAL ENVIO AUTOMÁTICO (Relatórios > Envios automáticos) -->
+  <div id="digest-config-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-card-wide" style="max-height: 90vh; overflow-y: auto;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="digest-config-modal-title">Novo envio automático</h3>
+        <button class="modal-close-btn" onclick="closeDigestConfigModal()">&times;</button>
+      </div>
+      <form id="digest-config-form" onsubmit="saveDigestConfig(event)">
+        <input type="hidden" id="dc-id" value="">
+
+        <div class="form-group">
+          <label class="form-label" for="dc-name">Nome do envio</label>
+          <input type="text" id="dc-name" class="form-input" required placeholder="Ex: Resumo diário da agência" value="Resumo diário da agência">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <div class="form-group">
+            <label class="form-label" for="dc-active">Status</label>
+            <select id="dc-active" class="form-select">
+              <option value="true">Ativo</option>
+              <option value="false">Pausado</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dc-frequency">Frequência</label>
+            <select id="dc-frequency" class="form-select">
+              <option value="daily">Diário</option>
+              <option value="weekdays" selected>Dias úteis</option>
+              <option value="weekly">Semanal</option>
+              <option value="monthly">Mensal</option>
+              <option value="custom">Personalizado</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dc-send-time">Horário</label>
+            <input type="time" id="dc-send-time" class="form-input" value="08:00">
+            <span style="font-size: 10px; color: var(--text-secondary); display: block; margin-top: 4px;">Fuso: America/Sao_Paulo</span>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dc-period-type">Período dos dados</label>
+            <select id="dc-period-type" class="form-select" onchange="handleDigestPeriodTypeChange()">
+              <option value="today">Hoje</option>
+              <option value="yesterday">Ontem</option>
+              <option value="current_month" selected>Mês atual</option>
+              <option value="last_7_days">Últimos 7 dias</option>
+              <option value="last_30_days">Últimos 30 dias</option>
+              <option value="custom">Período personalizado</option>
+            </select>
+          </div>
+          <div class="form-group" id="dc-custom-period-group" style="display: none; grid-column: 1 / -1;">
+            <label class="form-label">De / até</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="date" id="dc-period-from" class="form-input">
+              <input type="date" id="dc-period-to" class="form-input">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dc-comparison">Comparação</label>
+            <select id="dc-comparison" class="form-select">
+              <option value="none">Sem comparação</option>
+              <option value="previous_period">Período anterior</option>
+              <option value="previous_month" selected>Mês anterior</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="dc-client-scope">Clientes</label>
+            <select id="dc-client-scope" class="form-select">
+              <option value="all_active" selected>Todos os clientes ativos</option>
+              <option value="selected">Clientes selecionados</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Destinatário</label>
+          <input type="text" class="form-input" value="felippegabriel2005@gmail.com" readonly style="opacity: .7; cursor: not-allowed;">
+          <span style="font-size: 10px; color: var(--color-yellow); display: block; margin-top: 4px;">Ambiente de teste — nesta versão, o envio é travado neste endereço no backend, mesmo que este campo seja alterado.</span>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Conteúdo do e-mail</label>
+          <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px;">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-executive_summary" checked> Resumo executivo</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-attention_today" checked> O que precisa de atenção</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-portfolio_health" checked> Saúde da carteira</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-client_performance" checked> Desempenho dos clientes</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-commercial_pipeline" checked> Pipeline comercial</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-data_pending" checked> Pendências de dados</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-primary);cursor:pointer;"><input type="checkbox" id="dc-sec-ai_insights" checked> Insights do PRATA</label>
+          </div>
+        </div>
+
+        <div class="modal-footer" style="justify-content: space-between;">
+          <button type="button" class="filter-btn" onclick="sendDigestTestFromModal()" id="dc-test-btn">Enviar e-mail de teste</button>
+          <div style="display: flex; gap: 10px;">
+            <button type="button" class="form-btn-secondary" onclick="closeDigestConfigModal()">Cancelar</button>
+            <button type="submit" class="form-btn-primary">Salvar automação</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- DROPDOWN DO AVATAR (MENU DO USUÁRIO) -->
   <div id="user-menu-dropdown" style="display: none; position: fixed; z-index: 10060; min-width: 140px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--border-radius-sm); box-shadow: 0 8px 24px rgba(0,0,0,0.4); padding: 6px;">
     <div onclick="handleLogout()" style="display: flex; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12px; color: var(--text-primary); cursor: pointer; border-radius: 4px;" onmouseover="this.style.backgroundColor='rgba(255,255,255,0.05)'" onmouseout="this.style.backgroundColor='transparent'">
@@ -2333,6 +2480,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="script.js?v=64"></script>
+  <script src="script.js?v=65"></script>
 </body>
 </html>

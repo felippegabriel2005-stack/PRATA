@@ -7981,6 +7981,288 @@ function showRelatorios() {
   
   populateReportCampaigns();
   updateReportPreview();
+  selectRelatoriosTab(relatoriosActiveTab || 'gerar');
+}
+
+// --------------------------------------------------
+// Envios Automáticos (Relatórios > Envios automáticos) — "O PRATA leva o
+// que importa até você." Config/histórico ficam em email_digest_configs/
+// email_digest_logs (RLS: qualquer usuário autenticado do app gerencia,
+// mesmo modelo de confiança das outras tabelas). O envio em si (Resend,
+// allowlist de destinatário) SÓ roda no backend (api/send-digest.js) —
+// o front nunca vê a chave do Resend nem decide pra quem o e-mail vai.
+// --------------------------------------------------
+
+let relatoriosActiveTab = 'gerar';
+let digestConfigsCache = [];
+
+function selectRelatoriosTab(tab) {
+  relatoriosActiveTab = tab;
+  document.getElementById('relatorios-tab-gerar').classList.toggle('active', tab === 'gerar');
+  document.getElementById('relatorios-tab-envios').classList.toggle('active', tab === 'envios');
+  document.getElementById('relatorios-panel-gerar').style.display = tab === 'gerar' ? 'block' : 'none';
+  document.getElementById('relatorios-panel-envios').style.display = tab === 'envios' ? 'block' : 'none';
+  if (tab === 'envios') {
+    loadDigestConfigs();
+    loadDigestHistory();
+  }
+}
+
+const DIGEST_FREQUENCY_LABELS = { daily: 'Todos os dias', weekdays: 'Dias úteis', weekly: 'Semanal', monthly: 'Mensal', custom: 'Personalizado' };
+const DIGEST_PERIOD_LABELS = { today: 'Hoje', yesterday: 'Ontem', current_month: 'Mês atual', last_7_days: 'Últimos 7 dias', last_30_days: 'Últimos 30 dias', custom: 'Período personalizado' };
+
+async function loadDigestConfigs() {
+  const list = document.getElementById('digest-configs-list');
+  if (!list) return;
+  list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:20px 0;text-align:center;">Carregando...</div>`;
+
+  const { data, error } = await supabaseClient.from('email_digest_configs').select('*').order('created_at');
+  if (error) {
+    list.innerHTML = `<div style="font-size:12px;color:var(--text-secondary);padding:20px 0;text-align:center;">Não foi possível carregar os envios automáticos. ${error.message.includes('does not exist') ? 'A tabela ainda não existe — rode a migration email_digest.' : ''}</div>`;
+    return;
+  }
+  digestConfigsCache = data || [];
+  renderDigestConfigsList(digestConfigsCache);
+}
+
+function formatDigestDateTime(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const today = new Date();
+  const isToday = d.toDateString() === today.toDateString();
+  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+  const isTomorrow = d.toDateString() === tomorrow.toDateString();
+  const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+  const isYesterday = d.toDateString() === yesterday.toDateString();
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  if (isToday) return `Hoje · ${time}`;
+  if (isTomorrow) return `Amanhã · ${time}`;
+  if (isYesterday) return `Ontem · ${time}`;
+  return `${d.toLocaleDateString('pt-BR')} · ${time}`;
+}
+
+function renderDigestConfigsList(configs) {
+  const list = document.getElementById('digest-configs-list');
+  if (!list) return;
+
+  if (!configs.length) {
+    list.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:30px 0;text-align:center;">Nenhum envio automático configurado ainda.</div>`;
+    return;
+  }
+
+  list.innerHTML = configs.map(c => {
+    const pill = c.active ? { cls: 'active', text: 'Ativo' } : { cls: 'paused', text: 'Pausado' };
+    const freqLabel = DIGEST_FREQUENCY_LABELS[c.frequency] || c.frequency;
+    const periodLabel = DIGEST_PERIOD_LABELS[c.period_type] || c.period_type;
+    const clientsLabel = c.client_scope === 'selected' ? `${(c.selected_clients || []).length} cliente(s) selecionado(s)` : 'Todos os clientes';
+    return `
+      <div class="digest-config-card">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <span style="font-size:14px;font-weight:700;color:var(--text-primary);font-family:var(--font-family-title);">${escapeHtml(c.name)}</span>
+              <span class="digest-status-pill ${pill.cls}">${pill.text}</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-secondary);margin-top:4px;">${freqLabel} · ${c.send_time ? c.send_time.slice(0,5) : '08:00'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="filter-btn" style="height:28px;font-size:11px;" onclick="openDigestConfigModal('${c.id}')">Editar</button>
+            <button class="filter-btn" style="height:28px;font-size:11px;" onclick="sendDigestNow('${c.id}')">Enviar agora</button>
+            <button class="filter-btn" style="height:28px;font-size:11px;" onclick="toggleDigestConfigActive('${c.id}', ${!c.active})">${c.active ? 'Pausar' : 'Ativar'}</button>
+            <button class="filter-btn" style="height:28px;font-size:11px;color:var(--color-red);" onclick="deleteDigestConfig('${c.id}')">Excluir</button>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--divider-color);">
+          <div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Período</div><div style="font-size:12px;color:var(--text-primary);margin-top:2px;">${periodLabel}</div></div>
+          <div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Clientes</div><div style="font-size:12px;color:var(--text-primary);margin-top:2px;">${clientsLabel}</div></div>
+          <div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Destinatários</div><div style="font-size:12px;color:var(--text-primary);margin-top:2px;">1 destinatário</div></div>
+          <div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Último envio</div><div style="font-size:12px;color:var(--text-primary);margin-top:2px;">${formatDigestDateTime(c.last_sent_at)}</div></div>
+          <div><div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;">Próximo envio</div><div style="font-size:12px;color:var(--text-primary);margin-top:2px;">${c.active ? formatDigestDateTime(c.next_send_at) : '—'}</div></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function loadDigestHistory() {
+  const tbody = document.getElementById('digest-history-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);font-size:12px;padding:16px;">Carregando...</td></tr>`;
+
+  const { data, error } = await supabaseClient.from('email_digest_logs').select('*, email_digest_configs(name)').order('sent_at', { ascending: false }).limit(30);
+  if (error || !data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);font-size:12px;padding:16px;">Nenhum envio registrado ainda.</td></tr>`;
+    return;
+  }
+
+  const statusMap = {
+    sent: { text: 'Enviado', cls: 'healthy' },
+    failed: { text: 'Erro', cls: 'critical' },
+    blocked: { text: 'Bloqueado', cls: 'critical' },
+    queued: { text: 'Na fila', cls: 'attention' }
+  };
+
+  tbody.innerHTML = data.map(log => {
+    const s = statusMap[log.status] || { text: log.status, cls: '' };
+    const configName = (log.email_digest_configs && log.email_digest_configs.name) || '—';
+    const errorAttr = log.error_message ? `onclick="alert(${JSON.stringify(escapeHtml(log.error_message))})" style="cursor:pointer;"` : '';
+    return `
+      <tr>
+        <td>${escapeHtml(configName)}</td>
+        <td class="table-date-cell">${formatDigestDateTime(log.sent_at)}</td>
+        <td><span class="table-badge ${s.cls}" ${errorAttr}>${s.text}</span></td>
+        <td>${escapeHtml(log.recipient || '—')}</td>
+        <td>${log.error_message ? '<span style="font-size:11px;color:var(--text-secondary);cursor:pointer;" ' + errorAttr + '>ver erro</span>' : ''}</td>
+      </tr>`;
+  }).join('');
+}
+
+function handleDigestPeriodTypeChange() {
+  const isCustom = document.getElementById('dc-period-type').value === 'custom';
+  document.getElementById('dc-custom-period-group').style.display = isCustom ? 'block' : 'none';
+}
+
+const DIGEST_SECTION_KEYS = ['executive_summary', 'attention_today', 'portfolio_health', 'client_performance', 'commercial_pipeline', 'data_pending', 'ai_insights'];
+
+function openDigestConfigModal(configId) {
+  const form = document.getElementById('digest-config-form');
+  form.reset();
+  document.getElementById('dc-id').value = configId || '';
+  document.getElementById('digest-config-modal-title').innerText = configId ? 'Editar envio automático' : 'Novo envio automático';
+
+  const config = configId ? digestConfigsCache.find(c => c.id === configId) : null;
+  if (config) {
+    document.getElementById('dc-name').value = config.name;
+    document.getElementById('dc-active').value = String(!!config.active);
+    document.getElementById('dc-frequency').value = config.frequency;
+    document.getElementById('dc-send-time').value = (config.send_time || '08:00').slice(0, 5);
+    document.getElementById('dc-period-type').value = config.period_type;
+    document.getElementById('dc-period-from').value = config.period_custom_from || '';
+    document.getElementById('dc-period-to').value = config.period_custom_to || '';
+    document.getElementById('dc-comparison').value = config.comparison_type;
+    document.getElementById('dc-client-scope').value = config.client_scope;
+    const sections = config.sections || {};
+    DIGEST_SECTION_KEYS.forEach(k => { document.getElementById(`dc-sec-${k}`).checked = sections[k] !== false; });
+  } else {
+    DIGEST_SECTION_KEYS.forEach(k => { document.getElementById(`dc-sec-${k}`).checked = true; });
+  }
+  handleDigestPeriodTypeChange();
+  document.getElementById('digest-config-modal').style.display = 'flex';
+}
+
+function closeDigestConfigModal() {
+  document.getElementById('digest-config-modal').style.display = 'none';
+}
+
+function collectDigestConfigFromForm() {
+  const sections = {};
+  DIGEST_SECTION_KEYS.forEach(k => { sections[k] = document.getElementById(`dc-sec-${k}`).checked; });
+  return {
+    name: document.getElementById('dc-name').value.trim() || 'Resumo automático',
+    active: document.getElementById('dc-active').value === 'true',
+    frequency: document.getElementById('dc-frequency').value,
+    send_time: document.getElementById('dc-send-time').value || '08:00',
+    timezone: 'America/Sao_Paulo',
+    period_type: document.getElementById('dc-period-type').value,
+    period_custom_from: document.getElementById('dc-period-from').value || null,
+    period_custom_to: document.getElementById('dc-period-to').value || null,
+    comparison_type: document.getElementById('dc-comparison').value,
+    client_scope: document.getElementById('dc-client-scope').value,
+    selected_clients: [],
+    sections,
+    recipient_email: 'felippegabriel2005@gmail.com',
+    updated_at: new Date().toISOString()
+  };
+}
+
+// Salva e retorna o id (cria se dc-id estiver vazio) — reaproveitado tanto
+// pelo submit do form quanto pelo botão "Enviar e-mail de teste" (que
+// precisa de uma config já salva pra chamar o backend).
+async function saveDigestConfigInternal() {
+  const id = document.getElementById('dc-id').value;
+  const payload = collectDigestConfigFromForm();
+
+  if (id) {
+    const { error } = await supabaseClient.from('email_digest_configs').update(payload).eq('id', id);
+    if (error) throw error;
+    return id;
+  }
+  payload.created_by = (await supabaseClient.auth.getUser()).data?.user?.email || null;
+  const { data, error } = await supabaseClient.from('email_digest_configs').insert(payload).select('id').single();
+  if (error) throw error;
+  document.getElementById('dc-id').value = data.id;
+  return data.id;
+}
+
+async function saveDigestConfig(event) {
+  event.preventDefault();
+  try {
+    await saveDigestConfigInternal();
+    closeDigestConfigModal();
+    showToast('Automação salva.');
+    loadDigestConfigs();
+  } catch (err) {
+    console.error('Erro ao salvar envio automático:', err);
+    showToast('Não foi possível salvar a automação.');
+  }
+}
+
+async function callSendDigestEndpoint(configId, isTest) {
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  if (!session) { showToast('Sessão expirada — faça login novamente.'); return { ok: false }; }
+  try {
+    const resp = await fetch('/api/send-digest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ config_id: configId, is_test: !!isTest })
+    });
+    const json = await resp.json();
+    return { ok: resp.ok && json.ok, ...json };
+  } catch (err) {
+    console.error('Erro ao chamar /api/send-digest:', err);
+    return { ok: false, error: 'Erro de rede ao contatar o servidor.' };
+  }
+}
+
+async function sendDigestTestFromModal() {
+  const btn = document.getElementById('dc-test-btn');
+  const originalText = btn.innerText;
+  btn.disabled = true;
+  btn.innerText = 'Enviando...';
+  try {
+    const id = await saveDigestConfigInternal();
+    const result = await callSendDigestEndpoint(id, true);
+    showToast(result.ok ? 'E-mail de teste enviado.' : (result.error || 'Não foi possível enviar o e-mail. Verifique a configuração.'));
+    loadDigestConfigs();
+    loadDigestHistory();
+  } catch (err) {
+    console.error(err);
+    showToast('Não foi possível enviar o e-mail de teste.');
+  } finally {
+    btn.disabled = false;
+    btn.innerText = originalText;
+  }
+}
+
+async function sendDigestNow(configId) {
+  showToast('Enviando...');
+  const result = await callSendDigestEndpoint(configId, false);
+  showToast(result.ok ? 'E-mail enviado.' : (result.error || 'Não foi possível enviar o e-mail. Verifique a configuração.'));
+  loadDigestConfigs();
+  loadDigestHistory();
+}
+
+async function toggleDigestConfigActive(configId, newActive) {
+  const { error } = await supabaseClient.from('email_digest_configs').update({ active: newActive, updated_at: new Date().toISOString() }).eq('id', configId);
+  if (error) { showToast('Não foi possível atualizar o status.'); return; }
+  loadDigestConfigs();
+}
+
+async function deleteDigestConfig(configId) {
+  if (!confirm('Excluir este envio automático? Essa ação não pode ser desfeita.')) return;
+  const { error } = await supabaseClient.from('email_digest_configs').delete().eq('id', configId);
+  if (error) { showToast('Não foi possível excluir.'); return; }
+  showToast('Envio automático excluído.');
+  loadDigestConfigs();
 }
 
 // --------------------------------------------------

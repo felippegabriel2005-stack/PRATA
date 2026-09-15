@@ -2778,6 +2778,49 @@ body.light .client-more-link:hover {
   margin-bottom: 16px;
 }
 
+/* Abas internas de Relatórios (Gerar relatório / Envios automáticos) —
+   primeiro uso desse padrão no app (as demais "abas" do PRATA, tipo o
+   Comercial, na verdade trocam de view inteira pela sidebar). */
+.relatorios-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-family-body);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 4px;
+  margin-bottom: -1px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.relatorios-tab-btn:hover {
+  color: var(--text-primary);
+}
+.relatorios-tab-btn.active {
+  color: var(--text-primary);
+  border-bottom-color: var(--color-blue);
+}
+
+/* Cards de "Envios automáticos" */
+.digest-config-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-md);
+  padding: 16px 18px;
+}
+.digest-status-pill {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+}
+.digest-status-pill.active { background: var(--color-green-bg); color: var(--color-green); border: 1px solid var(--color-green-border); }
+.digest-status-pill.paused { background: rgba(255,255,255,0.05); color: var(--text-secondary); border: 1px solid var(--border-color); }
+.digest-status-pill.error { background: var(--color-red-bg); color: var(--color-red); border: 1px solid var(--color-red-border); }
+
 /* Formatos Grid */
 .format-selector-grid {
   display: grid;

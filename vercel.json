@@ -1,6 +1,9 @@
 {
   "functions": {
     "api/assistant.js": { "maxDuration": 60 },
-    "api/kpis.js": { "maxDuration": 30 }
+    "api/kpis.js": { "maxDuration": 30 },
+    "api/send-digest.js": { "maxDuration": 60 },
+    "api/cron-send-digests.js": { "maxDuration": 60 }
   }
 }
+
