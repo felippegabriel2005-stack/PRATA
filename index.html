@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRATA - Revenue Tracking & Intelligence</title>
-  <link rel="stylesheet" href="style.css?v=66">
+  <link rel="stylesheet" href="style.css?v=67">
 </head>
 <body>
   <!-- TELA DE LOGIN -->
@@ -2175,13 +2175,25 @@
           </div>
           <div class="form-group">
             <label class="form-label" for="dc-frequency">Frequência</label>
-            <select id="dc-frequency" class="form-select">
+            <select id="dc-frequency" class="form-select" onchange="handleDigestFrequencyChange()">
               <option value="daily">Diário</option>
               <option value="weekdays" selected>Dias úteis</option>
               <option value="weekly">Semanal</option>
               <option value="monthly">Mensal</option>
               <option value="custom">Personalizado</option>
             </select>
+          </div>
+          <div class="form-group" id="dc-custom-days-group" style="display: none; grid-column: 1 / -1;">
+            <label class="form-label">Em quais dias?</label>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="0"> Dom</label>
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="1"> Seg</label>
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="2"> Ter</label>
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="3"> Qua</label>
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="4"> Qui</label>
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="5"> Sex</label>
+              <label class="digest-day-toggle"><input type="checkbox" class="dc-day-checkbox" value="6"> Sáb</label>
+            </div>
           </div>
           <div class="form-group">
             <label class="form-label" for="dc-send-time">Horário</label>
@@ -2486,6 +2498,6 @@
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script src="script.js?v=66"></script>
+  <script src="script.js?v=67"></script>
 </body>
 </html>

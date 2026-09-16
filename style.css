@@ -2821,6 +2821,25 @@ body.light .client-more-link:hover {
 .digest-status-pill.paused { background: rgba(255,255,255,0.05); color: var(--text-secondary); border: 1px solid var(--border-color); }
 .digest-status-pill.error { background: var(--color-red-bg); color: var(--color-red); border: 1px solid var(--color-red-border); }
 
+.digest-day-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-sm);
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.digest-day-toggle:has(input:checked) {
+  color: var(--text-primary);
+  border-color: var(--border-color-hover);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 /* Formatos Grid */
 .format-selector-grid {
   display: grid;

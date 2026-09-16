@@ -8010,6 +8010,16 @@ function selectRelatoriosTab(tab) {
 
 const DIGEST_FREQUENCY_LABELS = { daily: 'Todos os dias', weekdays: 'Dias úteis', weekly: 'Semanal', monthly: 'Mensal', custom: 'Personalizado' };
 const DIGEST_PERIOD_LABELS = { today: 'Hoje', yesterday: 'Ontem', current_month: 'Mês atual', last_7_days: 'Últimos 7 dias', last_30_days: 'Últimos 30 dias', custom: 'Período personalizado' };
+const DIGEST_DAY_SHORT_LABELS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+
+function digestFrequencyDisplayLabel(config) {
+  if (config.frequency === 'custom') {
+    const days = (config.custom_days_of_week || []).slice().sort();
+    if (!days.length) return 'Personalizado (nenhum dia escolhido)';
+    return `Personalizado (${days.map(d => DIGEST_DAY_SHORT_LABELS[d]).join(', ')})`;
+  }
+  return DIGEST_FREQUENCY_LABELS[config.frequency] || config.frequency;
+}
 
 async function loadDigestConfigs() {
   const list = document.getElementById('digest-configs-list');
@@ -8052,7 +8062,7 @@ function renderDigestConfigsList(configs) {
 
   list.innerHTML = configs.map(c => {
     const pill = c.active ? { cls: 'active', text: 'Ativo' } : { cls: 'paused', text: 'Pausado' };
-    const freqLabel = DIGEST_FREQUENCY_LABELS[c.frequency] || c.frequency;
+    const freqLabel = digestFrequencyDisplayLabel(c);
     const periodLabel = DIGEST_PERIOD_LABELS[c.period_type] || c.period_type;
     const clientsLabel = c.client_scope === 'selected' ? `${(c.selected_clients || []).length} cliente(s) selecionado(s)` : 'Todos os clientes';
     return `
@@ -8126,6 +8136,11 @@ function handleDigestClientScopeChange() {
   document.getElementById('dc-selected-clients-group').style.display = isSelected ? 'block' : 'none';
 }
 
+function handleDigestFrequencyChange() {
+  const isCustom = document.getElementById('dc-frequency').value === 'custom';
+  document.getElementById('dc-custom-days-group').style.display = isCustom ? 'block' : 'none';
+}
+
 // Lista de checkboxes com todos os clientes reais (allClients já vem
 // carregado globalmente) — `selectedSlugs` vem preenchido só ao editar
 // uma automação existente.
@@ -8167,12 +8182,16 @@ function openDigestConfigModal(configId) {
     const sections = config.sections || {};
     DIGEST_SECTION_KEYS.forEach(k => { document.getElementById(`dc-sec-${k}`).checked = sections[k] !== false; });
     renderDigestClientCheckboxes(config.selected_clients || []);
+    const days = new Set((config.custom_days_of_week || []).map(String));
+    document.querySelectorAll('.dc-day-checkbox').forEach(el => { el.checked = days.has(el.value); });
   } else {
     DIGEST_SECTION_KEYS.forEach(k => { document.getElementById(`dc-sec-${k}`).checked = true; });
     renderDigestClientCheckboxes([]);
+    document.querySelectorAll('.dc-day-checkbox').forEach(el => { el.checked = false; });
   }
   handleDigestPeriodTypeChange();
   handleDigestClientScopeChange();
+  handleDigestFrequencyChange();
   document.getElementById('digest-config-modal').style.display = 'flex';
 }
 
@@ -8187,10 +8206,15 @@ function collectDigestConfigFromForm() {
   const selectedClients = clientScope === 'selected'
     ? Array.from(document.querySelectorAll('.dc-client-checkbox:checked')).map(el => el.value)
     : [];
+  const frequency = document.getElementById('dc-frequency').value;
+  const customDaysOfWeek = frequency === 'custom'
+    ? Array.from(document.querySelectorAll('.dc-day-checkbox:checked')).map(el => Number(el.value))
+    : [];
   return {
     name: document.getElementById('dc-name').value.trim() || 'Resumo automático',
     active: document.getElementById('dc-active').value === 'true',
-    frequency: document.getElementById('dc-frequency').value,
+    frequency,
+    custom_days_of_week: customDaysOfWeek,
     send_time: document.getElementById('dc-send-time').value || '08:00',
     timezone: 'America/Sao_Paulo',
     period_type: document.getElementById('dc-period-type').value,

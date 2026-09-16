@@ -41,7 +41,8 @@ function computeNextSendAt(config, fromDate) {
   candidate = new Date(candidate.getTime() + offsetMs);
 
   const advanceDay = (d) => new Date(d.getTime() + 86400000);
-  const isWeekday = (d) => { const day = new Date(d.toLocaleString('en-US', { timeZone: tz })).getDay(); return day >= 1 && day <= 5; };
+  const dayOfWeekAt = (d) => new Date(d.toLocaleString('en-US', { timeZone: tz })).getDay(); // 0=domingo .. 6=sábado
+  const isWeekday = (d) => { const day = dayOfWeekAt(d); return day >= 1 && day <= 5; };
 
   // Se o horário de hoje já passou, começa a procurar a partir de amanhã.
   if (candidate.getTime() <= base.getTime()) candidate = advanceDay(candidate);
@@ -49,6 +50,16 @@ function computeNextSendAt(config, fromDate) {
   if (config.frequency === 'weekdays') {
     let guard = 0;
     while (!isWeekday(candidate) && guard < 14) { candidate = advanceDay(candidate); guard++; }
+  } else if (config.frequency === 'custom') {
+    // "Personalizado": dias da semana escolhidos manualmente
+    // (custom_days_of_week, 0=domingo..6=sábado — mesma convenção do
+    // Date.getDay()). Sem nenhum dia marcado, não tem como saber quando
+    // disparar — cai pra "todo dia" em vez de travar num loop sem sair.
+    const days = Array.isArray(config.custom_days_of_week) ? config.custom_days_of_week.map(Number) : [];
+    if (days.length) {
+      let guard = 0;
+      while (!days.includes(dayOfWeekAt(candidate)) && guard < 14) { candidate = advanceDay(candidate); guard++; }
+    }
   } else if (config.frequency === 'weekly') {
     // Mantém o mesmo dia da semana do envio anterior; se não houver
     // last_sent_at, cai no comportamento diário (próxima ocorrência do
